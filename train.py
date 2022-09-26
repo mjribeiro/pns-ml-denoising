@@ -4,6 +4,7 @@ import torch.nn.functional as F
 import torch.optim as optim
 import torchvision
 import torchvision.transforms as transforms
+import wandb
 
 # Local imports
 from models.test_model import TestModel
@@ -30,12 +31,22 @@ def train(trainloader, device, epochs=2):
             running_loss += loss.item()
             if i % 2000 == 1999:    # print every 2000 mini-batches
                 print(f'[{epoch + 1}, {i + 1:5d}] loss: {running_loss / 2000:.3f}')
+                wandb.log({"running_loss": running_loss / 2000})
                 running_loss = 0.0
 
     print('Finished Training')
 
 
 if __name__ == "__main__":
+    # Weights&Biases initialisation
+    wandb.init(project="my-test-project",
+               config = {
+                   "learning_rate": 0.001,
+                   "epochs": 2,
+                   "batch_size": 4})
+
+    config = wandb.config
+
     # Load some data
     transform = transforms.Compose(
         [transforms.ToTensor(),
@@ -45,12 +56,12 @@ if __name__ == "__main__":
 
     trainset = torchvision.datasets.CIFAR10(root='./data', train=True,
                                             download=True, transform=transform)
-    trainloader = torch.utils.data.DataLoader(trainset, batch_size=batch_size,
+    trainloader = torch.utils.data.DataLoader(trainset, batch_size=config.batch_size,
                                             shuffle=True, num_workers=2)
 
     testset = torchvision.datasets.CIFAR10(root='./data', train=False,
                                         download=True, transform=transform)
-    testloader = torch.utils.data.DataLoader(testset, batch_size=batch_size,
+    testloader = torch.utils.data.DataLoader(testset, batch_size=config.batch_size,
                                             shuffle=False, num_workers=2)
 
     classes = ('plane', 'car', 'bird', 'cat',
@@ -58,6 +69,7 @@ if __name__ == "__main__":
 
     # Instantiate model
     net = TestModel()
+    wandb.watch(net)
 
     # Select GPU if available
     device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
@@ -66,11 +78,13 @@ if __name__ == "__main__":
 
     # Define loss function and optimizer
     criterion = nn.CrossEntropyLoss()
-    optimizer = optim.SGD(net.parameters(), lr=0.001, momentum=0.9)
+    optimizer = optim.SGD(net.parameters(), lr=config.learning_rate, momentum=0.9)
 
     # Train
-    train(trainloader, device)
+    train(trainloader, device, epochs=config.epochs)
 
     # Save model
     PATH = './saved/cifar_net.pth'
     torch.save(net.state_dict(), PATH)
+
+    wandb.finish()
