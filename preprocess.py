@@ -11,6 +11,7 @@ from utils.noise_sources.gaussian_white_noise import GaussianWhiteNoise
 from utils.noise_sources.brownian_noise import BrownianNoise
 
 # ----- DATA LOADING
+# TODO: Add automated/scripted way of copying this over
 file_path = './data/Metcalfe-2020/Resting/1551.mat'
 print("Is file in path? ", os.path.isfile(file_path)) # Check if docker mounted volume is working
 
