@@ -1,3 +1,4 @@
+from audioop import minmax
 from xml.etree.ElementInclude import LimitedRecursiveIncludeError
 import numpy as np
 import plotly.graph_objects as go
@@ -14,6 +15,48 @@ def bandpass_filter(data, freqs=[100, 10e3], fs=100e3, order=4):
 
     return data_filt
 
+
+def extract_20_sec_window(data, fs=100e3, start=0):
+    """
+    Takes a 1D array from a recording and returns 20s window
+    """
+    end = start + (20 * fs)
+
+    return data[int(start):int(end)]
+
+
+def generate_dataset(data, fs=100e3, num_channels=9):
+    """
+    Take multiple channel data and return list of 20s windows
+    """
+    all_columns = data.columns
+
+    num_windows = np.floor(len(data["Channel 1"]) / (20*fs))
+    vagus_dataset = np.zeros((int(num_windows * num_channels), int(20*fs)))
+
+    store_index = 0
+    for column in all_columns[1:]:
+        channel_data = data[column]
+        channel_data = minmax_scaling(remove_artefacts(channel_data))
+
+        for search_index in range(0, len(channel_data), int(20*fs)):
+            extracted_window = extract_20_sec_window(channel_data, fs=fs, start=search_index)
+
+            if len(extracted_window) < (20*fs):
+                break
+            else:
+                vagus_dataset[store_index] = extracted_window
+
+            store_index += 1
+
+    return vagus_dataset
+
+ 
+def minmax_scaling(data):
+    """
+    Scales data to [-1, 1]
+    """
+    return 2 * (data - np.min(data)) / (np.max(data) - np.min(data)) - 1
 
 def remove_artefacts(data):
     """
@@ -42,15 +85,7 @@ def plot_all_channels(data, filt=False, fs=100e3, lims=np.asarray([0.649, 0.656]
     fig.update_layout(
         title="Pig vagus spontaneous activity: all channels",
         xaxis_title="Time (s)",
-        yaxis_title="Voltage (V)",
-        # width=1200,
-        # height=800,
-        # font=dict(
-        #     size=18,
-        # ),
-        # xaxis = dict(
-        #     dtick = 1
-        # )
+        yaxis_title="Voltage (V)"
     )
 
     all_columns = data.columns

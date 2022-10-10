@@ -22,4 +22,11 @@ recording_df = pd.DataFrame(recording, columns=["Time", "Channel 1", "Channel 2"
 # print(recording_df.head())
 
 # ----- PLOT SAMPLE OF ALL CHANNELS (STACKED)
-plot_all_channels(recording_df, filt=False, fs=100e3, lims=np.asarray([0, 2]))
+# plot_all_channels(recording_df, filt=False, fs=100e3, lims=np.asarray([0, 2]))
+
+# ----- SORT ALL CHANNEL DATA INTO ONE DATASET
+vagus_dataset = generate_dataset(recording_df, fs=100e3, num_channels=9)
+print(vagus_dataset[0])
+
+# ----- SAVE DATASET TO BE USED IN ML
+np.save('./data/Metcalfe-2014/vagus_dataset.npy', vagus_dataset)
