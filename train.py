@@ -12,7 +12,7 @@ import matplotlib.pyplot as plt
 
 # Local imports
 from models.test_model import TestModel
-from dataset.vagus_dataset import VagusDataset
+from datasets.vagus_dataset import VagusDataset
 
 vagus_dataset = np.load('./data/Metcalfe-2014/vagus_dataset.npy')
 dataset = VagusDataset(data=vagus_dataset)
