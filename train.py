@@ -7,6 +7,8 @@ import torchvision
 import torchvision.transforms as transforms
 import wandb
 
+from torch.utils.data import DataLoader
+
 # Temp
 import matplotlib.pyplot as plt
 
@@ -14,10 +16,13 @@ import matplotlib.pyplot as plt
 from models.test_model import TestModel
 from datasets.vagus_dataset import VagusDataset
 
-vagus_dataset = np.load('./data/Metcalfe-2014/vagus_dataset.npy')
-dataset = VagusDataset(data=vagus_dataset)
+train_dataset = VagusDataset(train=True)
+test_dataset  = VagusDataset(train=False)
 
-sample = dataset.__getitem__(10)
+train_dataloader = DataLoader(train_dataset, batch_size=8, shuffle=True)
+test_dataloader = DataLoader(test_dataset, batch_size=8, shuffle=True)
+
+sample = train_dataset.__getitem__(10)
 
 plt.plot(sample)
 plt.show()

@@ -3,6 +3,8 @@ import numpy as np
 import os
 import pandas as pd
 
+from sklearn.model_selection import train_test_split
+
 # Local imports
 from utils.preprocessing import *
 
@@ -29,4 +31,6 @@ vagus_dataset = generate_dataset(recording_df, fs=100e3, num_channels=9)
 print(vagus_dataset[0])
 
 # ----- SAVE DATASET TO BE USED IN ML
-np.save('./data/Metcalfe-2014/vagus_dataset.npy', vagus_dataset)
+vagus_train, vagus_test = train_test_split(vagus_dataset, test_size=0.2, random_state=1)
+np.save('./data/Metcalfe-2014/vagus_train.npy', vagus_train)
+np.save('./data/Metcalfe-2014/vagus_test.npy', vagus_test)
