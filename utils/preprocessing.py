@@ -16,33 +16,33 @@ def bandpass_filter(data, freqs=[100, 10e3], fs=100e3, order=4):
     return data_filt
 
 
-def extract_20_sec_window(data, fs=100e3, start=0):
+def extract_window(data, fs=100e3, start=0, win_length=0.008):
     """
     Takes a 1D array from a recording and returns 20s window
     """
-    end = start + (20 * fs)
+    end = start + (win_length * fs)
 
     return data[int(start):int(end)]
 
 
-def generate_dataset(data, fs=100e3, num_channels=9):
+def generate_dataset(data, fs=100e3, num_channels=9, win_length=0.008):
     """
     Take multiple channel data and return list of 20s windows
     """
     all_columns = data.columns
 
-    num_windows = np.floor(len(data["Channel 1"]) / (20*fs))
-    vagus_dataset = np.zeros((int(num_windows * num_channels), int(20*fs)))
+    num_windows = np.floor(len(data["Channel 1"]) / (win_length*fs))
+    vagus_dataset = np.zeros((int(num_windows * num_channels), int(win_length*fs)))
 
     store_index = 0
     for column in all_columns[1:]:
         channel_data = data[column]
         channel_data = minmax_scaling(remove_artefacts(channel_data))
 
-        for search_index in range(0, len(channel_data), int(20*fs)):
-            extracted_window = extract_20_sec_window(channel_data, fs=fs, start=search_index)
+        for search_index in range(0, len(channel_data), int(win_length*fs)):
+            extracted_window = extract_window(channel_data, fs=fs, start=search_index, win_length=win_length)
 
-            if len(extracted_window) < (20*fs):
+            if len(extracted_window) < (win_length*fs):
                 break
             else:
                 vagus_dataset[store_index] = extracted_window

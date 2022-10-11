@@ -13,19 +13,33 @@ from torch.utils.data import DataLoader
 import matplotlib.pyplot as plt
 
 # Local imports
-from models.test_model import TestModel
+from models.vae_model import *
 from datasets.vagus_dataset import VagusDataset
 
+
+# Load vagus dataset
 train_dataset = VagusDataset(train=True)
 test_dataset  = VagusDataset(train=False)
 
 train_dataloader = DataLoader(train_dataset, batch_size=8, shuffle=True)
 test_dataloader = DataLoader(test_dataset, batch_size=8, shuffle=True)
 
-sample = train_dataset.__getitem__(10)
+sample = train_dataset.__getitem__(30)
 
 plt.plot(sample)
 plt.show()
+
+# # Define model
+# input_dim = len(train_dataset.__getitem__(0))
+# hidden_dim_encoder = 1024
+# kernel_size = 3
+
+# encoder = Encoder(input_dim=input_dim, hidden_dim=hidden_dim_encoder, kernel_size=kernel_size)
+# decoder = Decoder(latent_dim=20)
+
+# Training
+
+# Inference
 
 # def train(trainloader, device, epochs=2):
 #     # Train

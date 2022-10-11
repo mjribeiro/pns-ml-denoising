@@ -3,6 +3,8 @@ import numpy as np
 import os
 import pandas as pd
 
+import matplotlib.pyplot as plt
+
 from sklearn.model_selection import train_test_split
 
 # Local imports
@@ -27,8 +29,9 @@ recording_df = pd.DataFrame(recording, columns=["Time", "Channel 1", "Channel 2"
 # plot_all_channels(recording_df, filt=False, fs=100e3, lims=np.asarray([0, 2]))
 
 # ----- SORT ALL CHANNEL DATA INTO ONE DATASET
-vagus_dataset = generate_dataset(recording_df, fs=100e3, num_channels=9)
-print(vagus_dataset[0])
+vagus_dataset = generate_dataset(recording_df, fs=100e3, num_channels=9, win_length=0.02)
+# plt.plot(vagus_dataset[0])
+# plt.show()
 
 # ----- SAVE DATASET TO BE USED IN ML
 vagus_train, vagus_test = train_test_split(vagus_dataset, test_size=0.2, random_state=1)

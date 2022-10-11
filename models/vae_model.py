@@ -20,9 +20,9 @@ class Encoder(nn.Module):
         self.conv1d_2 = nn.Conv1d(in_channels=hidden_dim, out_channels=hidden_dim * 2, kernel_size=kernel_size, stride=1)
         self.conv1d_3 = nn.Conv1d(in_channels=hidden_dim * 2, out_channels=latent_dim, kernel_size=kernel_size, stride=1)
 
-        self.maxpool = nn.MaxPool1d(kernel_size=2, stride=1)
+        self.maxpool    = nn.MaxPool1d(kernel_size=2, stride=1)
         self.leaky_relu = nn.LeakyReLU(0.2, inplace=True)
-        self.dropout = nn.Dropout(0.5)
+        self.dropout    = nn.Dropout(0.5)
         
         self.training = True
     
@@ -41,9 +41,8 @@ class Decoder(nn.Module):
         self.conv1d_3 = nn.Conv1d(in_channels=hidden_dim * 2, out_channels=output_dim, kernel_size=kernel_size, stride=1)
         
         self.upsampling = nn.Upsample(scale_factor=2)
-        self.dropout = nn.Dropout(0.5)
-        self.leaky_relu  = nn.LeakyReLU(0.2)
-        
+        self.dropout    = nn.Dropout(0.5)
+        self.leaky_relu = nn.LeakyReLU(0.2)
         
 
     def forward(self, x):
@@ -74,5 +73,4 @@ class CoordinateVAEModel(nn.Module):
             onehot = F.gumbel_softmax(logits, tau=tau, hard=True)
 
         # Get output from decoder
-
-        return 0
+        return self.Decoder(onehot)
