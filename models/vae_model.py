@@ -3,61 +3,76 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 # Based on: https://github.com/Jackson-Kang/Pytorch-VAE-tutorial/blob/master/01_Variational_AutoEncoder.ipynb
+class CoordinateEncoder(nn.Module):
+    def __init__(self):
+        super(CoordinateEncoder, self).__init__()
+
+
+    def forward(self, x):
+        pass
+
 class Encoder(nn.Module):
     
-    def __init__(self, input_dim, hidden_dim, latent_dim):
+    def __init__(self, input_dim, hidden_dim, kernel_size, latent_dim):
         super(Encoder, self).__init__()
 
-        self.FC_input  = nn.Linear(input_dim, hidden_dim)
-        self.FC_input2 = nn.Linear(hidden_dim, hidden_dim)
-        self.FC_mean   = nn.Linear(hidden_dim, latent_dim)
-        self.FC_var    = nn.Linear(hidden_dim, latent_dim)
-        
-        self.LeakyReLU = nn.LeakyReLU(0.2)
+        self.conv1d_1 = nn.Conv1d(in_channels=input_dim, out_channels=hidden_dim, kernel_size=kernel_size, stride=1)
+        self.conv1d_2 = nn.Conv1d(in_channels=hidden_dim, out_channels=hidden_dim * 2, kernel_size=kernel_size, stride=1)
+        self.conv1d_3 = nn.Conv1d(in_channels=hidden_dim * 2, out_channels=latent_dim, kernel_size=kernel_size, stride=1)
+
+        self.maxpool = nn.MaxPool1d(kernel_size=2, stride=1)
+        self.leaky_relu = nn.LeakyReLU(0.2, inplace=True)
+        self.dropout = nn.Dropout(0.5)
         
         self.training = True
-        
+    
+    
     def forward(self, x):
-        h_       = self.LeakyReLU(self.FC_input(x))
-        h_       = self.LeakyReLU(self.FC_input2(h_))
-        mean     = self.FC_mean(h_)
-        log_var  = self.FC_var(h_)                     # encoder produces mean and log of variance 
-                                                       # (i.e., parateters of simple tractable normal distribution "q"
-        
-        return mean, log_var
+        h_   = self.dropout(self.leaky_relu(self.maxpool(self.conv1d_1(x))))
+        h_   = self.dropout(self.leaky_relu(self.maxpool(self.conv1d_2(h_))))
+        return self.dropout(self.leaky_relu(self.maxpool(self.conv1d_3(h_))))
 
 
 class Decoder(nn.Module):
-    def __init__(self, latent_dim, hidden_dim, output_dim):
+    def __init__(self, latent_dim, hidden_dim, output_dim, kernel_size):
         super(Decoder, self).__init__()
-        self.FC_hidden  = nn.Linear(latent_dim, hidden_dim)
-        self.FC_hidden2 = nn.Linear(hidden_dim, hidden_dim)
-        self.FC_output  = nn.Linear(hidden_dim, output_dim)
+        self.conv1d_1 = nn.Conv1d(in_channels=latent_dim, out_channels=hidden_dim, kernel_size=kernel_size, stride=1)
+        self.conv1d_2 = nn.Conv1d(in_channels=hidden_dim, out_channels=hidden_dim * 2, kernel_size=kernel_size, stride=1)
+        self.conv1d_3 = nn.Conv1d(in_channels=hidden_dim * 2, out_channels=output_dim, kernel_size=kernel_size, stride=1)
         
-        self.LeakyReLU  = nn.LeakyReLU(0.2)
+        self.upsampling = nn.Upsample(scale_factor=2)
+        self.dropout = nn.Dropout(0.5)
+        self.leaky_relu  = nn.LeakyReLU(0.2)
         
+        
+
     def forward(self, x):
-        h     = self.LeakyReLU(self.FC_hidden(x))
-        h     = self.LeakyReLU(self.FC_hidden2(h))
-        
-        x_hat = torch.sigmoid(self.FC_output(h))
-        return x_hat
+        h    = self.leaky_relu(self.conv1d(self.dropout(self.upsampling(x))))
+        h    = self.leaky_relu(self.conv1d(self.dropout(self.upsampling(h))))
+        return self.leaky_relu(self.conv1d(self.dropout(self.upsampling(h))))
     
 
-class VAEModel(nn.Module):
+class CoordinateVAEModel(nn.Module):
     def __init__(self, Encoder, Decoder, device):
-        super(VAEModel, self).__init__()
+        super(CoordinateVAEModel, self).__init__()
+        # self.CoordinateEncoder = CoordinateEncoder
         self.Encoder = Encoder
         self.Decoder = Decoder
-        
-    def reparameterization(self, mean, var, device):
-        epsilon = torch.randn_like(var).to(device)        # sampling epsilon        
-        z = mean + var*epsilon                            # reparameterization trick
-        return z
-                 
+
+        self.epoch = 0
+
     def forward(self, x):
-        mean, log_var = self.Encoder(x)
-        z = self.reparameterization(mean, torch.exp(0.5 * log_var)) # takes exponential function (log var -> var)
-        x_hat            = self.Decoder(z)
-        
-        return x_hat, mean, log_var
+        # Get logits from encoder
+        logits = self.Encoder(x)
+
+        # Gumbel-Softmax activation on the latent space
+        tau = 2 ** (-0.0003*self.epoch)
+
+        if self.Encoder.training == True:
+            onehot = F.gumbel_softmax(logits, tau=0.1, hard=True)
+        else:
+            onehot = F.gumbel_softmax(logits, tau=tau, hard=True)
+
+        # Get output from decoder
+
+        return 0
