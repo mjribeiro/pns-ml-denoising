@@ -43,12 +43,13 @@ class Decoder(nn.Module):
         self.upsampling = nn.Upsample(scale_factor=2)
         self.dropout    = nn.Dropout(0.5)
         self.leaky_relu = nn.LeakyReLU(0.2)
+        self.tanh       = nn.Tanh()
         
 
     def forward(self, x):
         h    = self.leaky_relu(self.conv1d(self.dropout(self.upsampling(x))))
         h    = self.leaky_relu(self.conv1d(self.dropout(self.upsampling(h))))
-        return self.leaky_relu(self.conv1d(self.dropout(self.upsampling(h))))
+        return self.tanh(self.conv1d(self.dropout(self.upsampling(h))))
     
 
 class CoordinateVAEModel(nn.Module):
