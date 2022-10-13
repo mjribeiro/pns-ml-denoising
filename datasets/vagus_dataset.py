@@ -9,7 +9,8 @@ class VagusDataset(torch.utils.data.Dataset):
 
 
     def __getitem__(self, idx: int):
-        return self.data[idx]
+        data_torch = torch.from_numpy(self.data[idx])
+        return torch.unsqueeze(data_torch, 0)
 
     
     def __len__(self) -> int:

@@ -17,7 +17,6 @@ import matplotlib.pyplot as plt
 from models.vae_model import *
 from datasets.vagus_dataset import VagusDataset
 
-
 # Select GPU if available
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
@@ -25,35 +24,65 @@ device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 train_dataset = VagusDataset(train=True)
 test_dataset  = VagusDataset(train=False)
 
-train_dataloader = DataLoader(train_dataset, batch_size=8, shuffle=True)
-test_dataloader = DataLoader(test_dataset, batch_size=8, shuffle=True)
+batch_size = 16
+train_dataloader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+test_dataloader = DataLoader(test_dataset, batch_size=batch_size, shuffle=True)
 
-# sample = train_dataset.__getitem__(30)
+# sample = train_dataset.__getitem__(0)[0]
 
 # plt.plot(sample)
 # plt.show()
 
 # Define model
-input_dim = len(train_dataset.__getitem__(0))
+input_dim = 2048 # TODO: don't hardcode this, find out from input
 hidden_dim_encoder = 256
 hidden_dim_decoder = 256
-kernel_size = 3
+kernel_size = 1
+lr=1e-3  # TODO: Hyperparameter optimisation
+epochs = 10
 
-encoder = Encoder(input_dim=input_dim, hidden_dim=hidden_dim_encoder, latent_dim=20, kernel_size=kernel_size)
-decoder = Decoder(latent_dim=20, hidden_dim=hidden_dim_decoder, output_dim=input_dim)
+print("Setting up coordinate VAE model...")
+encoder = Encoder(input_dim=1, latent_dim=1, kernel_size=kernel_size, device=device)
+decoder = Decoder(latent_dim=1, output_dim=1, kernel_size=kernel_size, device=device)
 model = CoordinateVAEModel(Encoder=encoder, Decoder=decoder, device=device)
 
-# Training
-BCE_loss = nn.BCELoss()
+# Hyperparameter setup
+mse_loss = nn.MSELoss(reduction='sum')
+kld_loss = nn.KLDivLoss(reduction='sum')
 
-def loss_function(x, x_hat, mean, log_var):
-    reproduction_loss = nn.functional.binary_cross_entropy(x_hat, x, reduction='sum')
-    kld      = - 0.5 * torch.sum(1+ log_var - mean.pow(2) - log_var.exp())
+def loss_function(x, x_hat, mse_weight=0.5, kld_weight=0.5):
+    mse = mse_loss(x, x_hat)
+    kld = kld_loss(x, x_hat)
 
-    return reproduction_loss + kld
+    return (mse_weight * mse) + (kld_weight * kld)
 
 
 optimizer = Adam(model.parameters(), lr=lr)
+
+# Training
+print("Start training VAE...")
+model.train()
+
+for epoch in range(epochs):
+    overall_loss = 0
+    model.epoch = epoch
+
+    for batch_idx, x in enumerate(train_dataloader):
+        x = x.to(device).float()
+
+        optimizer.zero_grad()
+
+        x_hat = model(x)
+        loss = loss_function(x, x_hat)
+        
+        overall_loss += loss.item()
+        
+        loss.backward()
+        optimizer.step()
+        
+    print("\tEpoch", epoch + 1, "complete!", "\tAverage Loss: ", overall_loss / (batch_idx*batch_size))
+        
+print("Finished!")
 
 # Inference
 

@@ -42,7 +42,7 @@ def generate_dataset(data, fs=100e3, num_channels=9, win_length=0.008):
         for search_index in range(0, len(channel_data), int(win_length*fs)):
             extracted_window = extract_window(channel_data, fs=fs, start=search_index, win_length=win_length)
 
-            if len(extracted_window) < (win_length*fs):
+            if len(extracted_window) < (int(win_length*fs)):
                 break
             else:
                 vagus_dataset[store_index] = extracted_window
