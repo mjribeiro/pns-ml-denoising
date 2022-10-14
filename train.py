@@ -1,10 +1,6 @@
-import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import torch.optim as optim
-import torchvision
-import torchvision.transforms as transforms
 import wandb
 
 from torch.optim import Adam
@@ -17,6 +13,15 @@ import matplotlib.pyplot as plt
 from models.vae_model import *
 from datasets.vagus_dataset import VagusDataset
 
+# Weights&Biases initialisation
+wandb.init(project="PNS Denoising",
+           config = {
+               "learning_rate": 1e-3,
+               "epochs": 10,
+               "batch_size": 16})
+
+config = wandb.config
+
 # Select GPU if available
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
@@ -24,9 +29,8 @@ device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 train_dataset = VagusDataset(train=True)
 test_dataset  = VagusDataset(train=False)
 
-batch_size = 16
-train_dataloader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
-test_dataloader = DataLoader(test_dataset, batch_size=batch_size, shuffle=True)
+train_dataloader = DataLoader(train_dataset, batch_size=config.batch_size, shuffle=True)
+test_dataloader = DataLoader(test_dataset, batch_size=config.batch_size, shuffle=True)
 
 # sample = train_dataset.__getitem__(0)[0]
 
@@ -38,8 +42,6 @@ input_dim = 2048 # TODO: don't hardcode this, find out from input
 hidden_dim_encoder = 256
 hidden_dim_decoder = 256
 kernel_size = 1
-lr=1e-3  # TODO: Hyperparameter optimisation
-epochs = 10
 
 print("Setting up coordinate VAE model...")
 encoder = Encoder(input_dim=1, latent_dim=1, kernel_size=kernel_size, device=device)
@@ -52,18 +54,19 @@ kld_loss = nn.KLDivLoss(reduction='sum')
 
 def loss_function(x, x_hat, mse_weight=0.5, kld_weight=0.5):
     mse = mse_loss(x, x_hat)
-    kld = kld_loss(x, x_hat)
+    kld = kld_loss(F.log_softmax(x, -1), F.softmax(x_hat, -1))
 
-    return (mse_weight * mse) + (kld_weight * kld)
+    return (mse_weight * mse) + (kld_weight * -kld)
 
 
-optimizer = Adam(model.parameters(), lr=lr)
+optimizer = Adam(model.parameters(), lr=config.learning_rate)
+wandb.watch(model)
 
 # Training
 print("Start training VAE...")
 model.train()
 
-for epoch in range(epochs):
+for epoch in range(config.epochs):
     overall_loss = 0
     model.epoch = epoch
 
@@ -80,88 +83,13 @@ for epoch in range(epochs):
         loss.backward()
         optimizer.step()
         
-    print("\tEpoch", epoch + 1, "complete!", "\tAverage Loss: ", overall_loss / (batch_idx*batch_size))
+    print("\tEpoch", epoch + 1, "complete!", "\tAverage Loss: ", overall_loss / (batch_idx*config.batch_size))
+    wandb.log({"loss": overall_loss / (batch_idx*config.batch_size)})
         
 print("Finished!")
 
-# Inference
+# TODO: Folder needs to be created/checked if exists before using torch.save()
+PATH = './saved/coordinate_vae.pth'
+torch.save(model.state_dict(), PATH)
 
-# def train(trainloader, device, epochs=2):
-#     # Train
-#     for epoch in range(epochs):  # loop over the dataset multiple times
-
-#         running_loss = 0.0
-#         for i, data in enumerate(trainloader, 0):
-#             # get the inputs; data is a list of [inputs, labels]
-#             inputs, labels = data[0].to(device), data[1].to(device)
-
-#             # zero the parameter gradients
-#             optimizer.zero_grad()
-
-#             # forward + backward + optimize
-#             outputs = net(inputs)
-#             loss = criterion(outputs, labels)
-#             loss.backward()
-#             optimizer.step()
-
-#             # print statistics
-#             running_loss += loss.item()
-#             if i % 2000 == 1999:    # print every 2000 mini-batches
-#                 print(f'[{epoch + 1}, {i + 1:5d}] loss: {running_loss / 2000:.3f}')
-#                 wandb.log({"running_loss": running_loss / 2000})
-#                 running_loss = 0.0
-
-#     print('Finished Training')
-
-
-# if __name__ == "__main__":
-#     # Weights&Biases initialisation
-#     wandb.init(project="my-test-project",
-#                config = {
-#                    "learning_rate": 0.001,
-#                    "epochs": 2,
-#                    "batch_size": 4})
-
-#     config = wandb.config
-
-#     # Load some data
-#     transform = transforms.Compose(
-#         [transforms.ToTensor(),
-#         transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))])
-
-#     batch_size = 4
-
-#     trainset = torchvision.datasets.CIFAR10(root='./data', train=True,
-#                                             download=True, transform=transform)
-#     trainloader = torch.utils.data.DataLoader(trainset, batch_size=config.batch_size,
-#                                             shuffle=True, num_workers=2)
-
-#     testset = torchvision.datasets.CIFAR10(root='./data', train=False,
-#                                         download=True, transform=transform)
-#     testloader = torch.utils.data.DataLoader(testset, batch_size=config.batch_size,
-#                                             shuffle=False, num_workers=2)
-
-#     classes = ('plane', 'car', 'bird', 'cat',
-#             'deer', 'dog', 'frog', 'horse', 'ship', 'truck')
-
-#     # Instantiate model
-#     net = TestModel()
-#     wandb.watch(net)
-
-#     # Select GPU if available
-#     device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
-#     print(f"Device is: {device}")
-#     net.to(device)
-
-#     # Define loss function and optimizer
-#     criterion = nn.CrossEntropyLoss()
-#     optimizer = optim.SGD(net.parameters(), lr=config.learning_rate, momentum=0.9)
-
-#     # Train
-#     train(trainloader, device, epochs=config.epochs)
-
-#     # Save model
-#     PATH = './saved/cifar_net.pth'
-#     torch.save(net.state_dict(), PATH)
-
-#     wandb.finish()
+wandb.finish()
