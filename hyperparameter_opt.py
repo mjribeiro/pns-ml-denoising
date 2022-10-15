@@ -23,7 +23,6 @@ def train():
                 "learning_rate": 1e-3,
                 "epochs": 10,
                 "batch_size": 16,
-                "kld_weight": 0.5,
                 "mse_weight": 0.5})
 
     config = wandb.config
@@ -42,8 +41,6 @@ def train():
 
     # Define model
     input_dim = 2048 # TODO: don't hardcode this, find out from input
-    hidden_dim_encoder = 256
-    hidden_dim_decoder = 256
     kernel_size = 1
 
     print("Setting up coordinate VAE model...")
@@ -92,12 +89,6 @@ def train():
         wandb.log({"loss": overall_loss / (batch_idx*config.batch_size)})
             
     print("Finished!")
-
-    # TODO: Folder needs to be created/checked if exists before using torch.save()
-    PATH = './saved/coordinate_vae.pth'
-    torch.save(model.state_dict(), PATH)
-
-    wandb.finish()
 
 # Hyperparameter opt
 sweep_configuration = {

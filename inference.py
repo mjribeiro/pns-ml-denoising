@@ -26,7 +26,7 @@ kernel_size = 1
 print("Setting up coordinate VAE model...")
 encoder = Encoder(input_dim=1, latent_dim=1, kernel_size=kernel_size, device=device)
 decoder = Decoder(latent_dim=1, output_dim=1, kernel_size=kernel_size, device=device)
-model = CoordinateVAEModel(Encoder=encoder, Decoder=decoder, device=device)
+model = CoordinateVAEModel(Encoder=encoder, Decoder=decoder)
 
 # Load model weights
 PATH = './saved/coordinate_vae.pth'
@@ -37,8 +37,8 @@ model.eval()
 
 with torch.no_grad():
     for batch_idx, x in enumerate(test_dataloader):
-        # x = x.view(batch_size, x_dim)
         x = x.to(device).float()
+        model.training = False
         
         x_hat = model(x)
 

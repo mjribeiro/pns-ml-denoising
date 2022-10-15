@@ -22,7 +22,7 @@ class Encoder(nn.Module):
         self.conv1d_2 = nn.Conv1d(in_channels=input_dim * 2, out_channels=input_dim * 4, kernel_size=kernel_size, stride=1)
         self.conv1d_3 = nn.Conv1d(in_channels=input_dim * 4, out_channels=latent_dim, kernel_size=kernel_size, stride=1)
 
-        self.maxpool    = nn.MaxPool1d(kernel_size=3, stride=3)
+        self.maxpool    = nn.MaxPool1d(kernel_size=4, stride=4)
         self.leaky_relu = nn.LeakyReLU(0.2)
         self.dropout    = nn.Dropout(0.5)
         
@@ -33,10 +33,7 @@ class Encoder(nn.Module):
         # x    = x.clone().detach().to(self.device)
         # x    = torch.tensor(x, device=self.device, dtype=self.conv1d_1.weight.dtype)
 
-        h_   = self.conv1d_1(x)
-        h_   = self.maxpool(h_)
-        h_   = self.leaky_relu(h_)
-        h_   = self.dropout(h_)
+        h_   = self.dropout(self.leaky_relu(self.maxpool(self.conv1d_1(x))))
         h_   = self.dropout(self.leaky_relu(self.maxpool(self.conv1d_2(h_))))
         return self.dropout(self.leaky_relu(self.maxpool(self.conv1d_3(h_))))
 
@@ -51,17 +48,15 @@ class Decoder(nn.Module):
         self.conv1d_2 = nn.Conv1d(in_channels=latent_dim * 2, out_channels=latent_dim * 4, kernel_size=kernel_size, stride=1)
         self.conv1d_3 = nn.Conv1d(in_channels=latent_dim * 4, out_channels=output_dim, kernel_size=kernel_size, stride=1)
         
-        self.upsampling = nn.Upsample(scale_factor=3)
-        self.upsampling_out = nn.Upsample(size=2048)
+        self.upsampling = nn.Upsample(scale_factor=4)
         self.dropout    = nn.Dropout(0.5)
         self.leaky_relu = nn.LeakyReLU(0.2)
-        # self.tanh       = torch.tanh()
         
 
     def forward(self, x):
         h    = self.leaky_relu(self.conv1d_1(self.dropout(self.upsampling(x))))
         h    = self.leaky_relu(self.conv1d_2(self.dropout(self.upsampling(h))))
-        return torch.tanh(self.conv1d_3(self.dropout(self.upsampling_out(h))))
+        return torch.tanh(self.conv1d_3(self.dropout(self.upsampling(h))))
     
 
 class CoordinateVAEModel(nn.Module):
