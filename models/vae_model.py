@@ -65,7 +65,7 @@ class Decoder(nn.Module):
     
 
 class CoordinateVAEModel(nn.Module):
-    def __init__(self, Encoder, Decoder, device):
+    def __init__(self, Encoder, Decoder):
         super(CoordinateVAEModel, self).__init__()
         # self.CoordinateEncoder = CoordinateEncoder
         self.Encoder = Encoder

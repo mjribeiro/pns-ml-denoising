@@ -46,6 +46,6 @@ with torch.no_grad():
 
 
 # x = x.view(16, 1, input_dim)
-plt.plot(x[0].cpu().numpy())
-plt.plot(x_hat[0].cpu().numpy())
+plt.plot(x[0][0])
+plt.plot(x_hat[0][0])
 plt.show()
