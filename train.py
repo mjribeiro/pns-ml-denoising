@@ -20,9 +20,9 @@ device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 wandb.init(project="PNS Denoising",
         config = {
             "learning_rate": 1e-3,
-            "epochs": 1,
-            "batch_size": 16,
-            "mse_weight": 0.5})
+            "epochs": 2,
+            "batch_size": 32,
+            "mse_weight": 0.2})
 
 config = wandb.config
 
@@ -45,8 +45,8 @@ hidden_dim_decoder = 256
 kernel_size = 1
 
 print("Setting up coordinate VAE model...")
-encoder = Encoder(input_dim=1, latent_dim=1, kernel_size=kernel_size, device=device)
-decoder = Decoder(latent_dim=1, output_dim=1, kernel_size=kernel_size, device=device)
+encoder = Encoder(input_dim=1, latent_dim=30, kernel_size=kernel_size, num_layers=6, pool_step=2, device=device)
+decoder = Decoder(latent_dim=30, output_dim=1, kernel_size=kernel_size, num_layers=6, pool_step=2, device=device)
 model = CoordinateVAEModel(Encoder=encoder, Decoder=decoder)
 
 # Hyperparameter setup
