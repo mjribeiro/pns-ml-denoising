@@ -1,3 +1,4 @@
+import math
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -23,8 +24,16 @@ class Encoder(nn.Module):
         self.layers = nn.ModuleList()
 
         for i in range(self.num_layers-1):
-            self.layers.append(nn.Conv1d(in_channels=input_dim * (2 ** i), out_channels=input_dim * (2 ** (i + 1)), kernel_size=kernel_size, stride=1))
-        self.layers.append(nn.Conv1d(in_channels=input_dim * (2 ** (i + 1)), out_channels=latent_dim, kernel_size=kernel_size, stride=1))
+            self.layers.append(nn.Conv1d(in_channels=input_dim * (2 ** i), 
+                                         out_channels=input_dim * (2 ** (i + 1)), 
+                                         kernel_size=kernel_size, 
+                                         padding=math.floor(kernel_size/2), 
+                                         stride=1))
+        self.layers.append(nn.Conv1d(in_channels=input_dim * (2 ** (i + 1)), 
+                                     out_channels=latent_dim, 
+                                     kernel_size=kernel_size, 
+                                     padding=math.floor(kernel_size/2), 
+                                     stride=1))
 
         self.maxpool    = nn.MaxPool1d(kernel_size=self.pool_step, stride=self.pool_step)
         self.leaky_relu = nn.LeakyReLU(0.2)
@@ -51,8 +60,16 @@ class Decoder(nn.Module):
         self.layers = nn.ModuleList()
 
         for i in range(self.num_layers-1):
-            self.layers.append(nn.Conv1d(in_channels=latent_dim * (2 ** i), out_channels=latent_dim * (2 ** (i + 1)), kernel_size=kernel_size, stride=1))
-        self.layers.append(nn.Conv1d(in_channels=latent_dim * (2 ** (i + 1)), out_channels=output_dim, kernel_size=kernel_size, stride=1))
+            self.layers.append(nn.Conv1d(in_channels=latent_dim * (2 ** i), 
+                                         out_channels=latent_dim * (2 ** (i + 1)), 
+                                         kernel_size=kernel_size, 
+                                         padding=math.floor(kernel_size/2), 
+                                         stride=1))
+        self.layers.append(nn.Conv1d(in_channels=latent_dim * (2 ** (i + 1)), 
+                                     out_channels=output_dim, 
+                                     kernel_size=kernel_size, 
+                                     padding=math.floor(kernel_size/2), 
+                                     stride=1))
  
         self.upsampling = nn.Upsample(scale_factor=self.pool_step)
         self.dropout    = nn.Dropout(0.5)

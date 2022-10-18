@@ -14,18 +14,16 @@ device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 train_dataset = VagusDataset(train=True)
 test_dataset  = VagusDataset(train=False)
 
-train_dataloader = DataLoader(train_dataset, batch_size=16, shuffle=True)
-test_dataloader = DataLoader(test_dataset, batch_size=16, shuffle=True)
+train_dataloader = DataLoader(train_dataset, batch_size=32, shuffle=True)
+test_dataloader = DataLoader(test_dataset, batch_size=32, shuffle=True)
 
 # Define model
 input_dim = 2048 # TODO: don't hardcode this, find out from input
-hidden_dim_encoder = 256
-hidden_dim_decoder = 256
 kernel_size = 1
 
 print("Setting up coordinate VAE model...")
-encoder = Encoder(input_dim=1, latent_dim=1, kernel_size=kernel_size, device=device)
-decoder = Decoder(latent_dim=1, output_dim=1, kernel_size=kernel_size, device=device)
+encoder = Encoder(input_dim=1, latent_dim=1, kernel_size=kernel_size, num_layers=6, pool_step=2, device=device)
+decoder = Decoder(latent_dim=1, output_dim=1, kernel_size=kernel_size, num_layers=6, pool_step=2, device=device)
 model = CoordinateVAEModel(Encoder=encoder, Decoder=decoder)
 
 # Load model weights
