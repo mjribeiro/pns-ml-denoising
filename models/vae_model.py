@@ -37,7 +37,7 @@ class Encoder(nn.Module):
 
         self.maxpool    = nn.MaxPool1d(kernel_size=self.pool_step, stride=self.pool_step)
         self.leaky_relu = nn.LeakyReLU(0.2)
-        self.dropout    = nn.Dropout(0.5)
+        self.dropout    = nn.Dropout(0.2)
         
         self.training = True
     
@@ -72,15 +72,16 @@ class Decoder(nn.Module):
                                      stride=1))
  
         self.upsampling = nn.Upsample(scale_factor=self.pool_step)
-        self.dropout    = nn.Dropout(0.5)
+        self.dropout    = nn.Dropout(0.2)
         self.leaky_relu = nn.LeakyReLU(0.2)
+        self.tanh       = nn.Tanh()
         
 
     def forward(self, x):
         h = x
         for layer_idx in range(self.num_layers-1):
             h   = self.leaky_relu(self.layers[layer_idx](self.dropout(self.upsampling(h))))
-        return torch.tanh(self.layers[-1](self.dropout(self.upsampling(h))))
+        return self.tanh(self.layers[-1](self.dropout(self.upsampling(h))))
     
 
 class CoordinateVAEModel(nn.Module):
@@ -100,9 +101,15 @@ class CoordinateVAEModel(nn.Module):
         tau = 2 ** (-0.0003*self.epoch)
 
         if self.Encoder.training == True:
-            onehot = F.gumbel_softmax(logits, tau=tau, hard=True)
+            y_hard = F.gumbel_softmax(logits, tau=tau, hard=True)
+            y_soft = F.gumbel_softmax(logits, tau=tau, hard=False)
+            onehot = y_hard - y_soft.detach() + y_soft
+            # onehot = F.gumbel_softmax(logits, tau=tau, hard=True)
         else:
-            onehot = F.gumbel_softmax(logits, tau=0.1, hard=True)
+            y_hard = F.gumbel_softmax(logits, tau=0.1, hard=True)
+            y_soft = F.gumbel_softmax(logits, tau=0.1, hard=False)
+            onehot = y_hard - y_soft.detach() + y_soft
+            # onehot = F.gumbel_softmax(logits, tau=0.1, hard=True)
 
         # Get output from decoder
         return self.Decoder(onehot)
