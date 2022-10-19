@@ -1,8 +1,7 @@
-from audioop import minmax
-from xml.etree.ElementInclude import LimitedRecursiveIncludeError
 import numpy as np
 import plotly.graph_objects as go
 
+from sklearn.preprocessing import StandardScaler
 from scipy import signal
 
 
@@ -27,7 +26,7 @@ def extract_window(data, fs=100e3, start=0, win_length=0.008):
 
 def generate_dataset(data, fs=100e3, num_channels=9, win_length=0.008):
     """
-    Take multiple channel data and return list of 20s windows
+    Take multiple channel data and return list of windows of data
     """
     all_columns = data.columns
 
@@ -37,6 +36,12 @@ def generate_dataset(data, fs=100e3, num_channels=9, win_length=0.008):
     store_index = 0
     for column in all_columns[1:]:
         channel_data = data[column]
+
+        # Standardise mean and standard dev
+        scaler = StandardScaler()
+        channel_data = scaler.fit_transform(np.asarray(channel_data).reshape(-1, 1))
+
+        # Remove artefacts and rescale to [-1, 1]
         channel_data = minmax_scaling(remove_artefacts(channel_data))
 
         for search_index in range(0, len(channel_data), int(win_length*fs)):
@@ -45,7 +50,7 @@ def generate_dataset(data, fs=100e3, num_channels=9, win_length=0.008):
             if len(extracted_window) < (int(win_length*fs)):
                 break
             else:
-                vagus_dataset[store_index] = extracted_window
+                vagus_dataset[store_index] = extracted_window.flatten()
 
             store_index += 1
 
