@@ -60,18 +60,16 @@ class Decoder(nn.Module):
         self.layers = nn.ModuleList()
 
         for i in range(self.num_layers-1):
-            self.layers.append(nn.Conv1d(in_channels=latent_dim * (2 ** i), 
-                                         out_channels=latent_dim * (2 ** (i + 1)), 
-                                         kernel_size=kernel_size, 
-                                         padding=math.floor(kernel_size/2), 
-                                         stride=1))
-        self.layers.append(nn.Conv1d(in_channels=latent_dim * (2 ** (i + 1)), 
-                                     out_channels=output_dim, 
-                                     kernel_size=kernel_size, 
-                                     padding=math.floor(kernel_size/2), 
-                                     stride=1))
- 
-        self.upsampling = nn.Upsample(scale_factor=self.pool_step)
+            self.layers.append(nn.ConvTranspose1d(in_channels=latent_dim * (2 ** i), 
+                                                  out_channels=latent_dim * (2 ** (i + 1)), 
+                                                  kernel_size=self.pool_step,
+                                                  padding=0, 
+                                                  stride=self.pool_step))
+        self.layers.append(nn.ConvTranspose1d(in_channels=latent_dim * (2 ** (i + 1)), 
+                                              out_channels=output_dim,
+                                              kernel_size=self.pool_step, 
+                                              padding=0, 
+                                              stride=self.pool_step))
         self.dropout    = nn.Dropout(0.2)
         self.leaky_relu = nn.LeakyReLU(0.2)
         self.tanh       = nn.Tanh()
@@ -80,8 +78,8 @@ class Decoder(nn.Module):
     def forward(self, x):
         h = x
         for layer_idx in range(self.num_layers-1):
-            h   = self.leaky_relu(self.layers[layer_idx](self.dropout(self.upsampling(h))))
-        return self.tanh(self.layers[-1](self.dropout(self.upsampling(h))))
+            h   = self.leaky_relu(self.layers[layer_idx](self.dropout(h)))
+        return self.tanh(self.layers[-1](self.dropout(h)))
     
 
 class CoordinateVAEModel(nn.Module):

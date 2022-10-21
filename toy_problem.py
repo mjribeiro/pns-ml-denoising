@@ -13,20 +13,19 @@ from models.vae_model import *
 
 # --- Create sine wave
 fs = 30000
-f = 1000
+f = 500
 samples = 256
 x = np.sin(2 * np.pi * f * np.arange(samples) / fs)
 
-noise_levels = np.arange(0.1, 0.6, 0.1)
-input_data = np.zeros(samples, (len(noise_levels)))
-
-for i in range(len(noise_levels)):
-    input_data[i] = x + np.random.normal(0,noise_levels[i],samples)
-
-input_data = np.asarray(input_data)
-time_samples = np.where(input_data==input_data.min())
-
 # --- Extra: add noise
+# noise_levels = np.arange(0.1, 0.6, 0.1)
+# input_data = np.zeros((len(noise_levels), samples))
+
+# for i in range(len(noise_levels)):
+#     input_data[i] = x + np.random.normal(0, noise_levels[i], samples)
+
+# input_data = np.asarray(input_data)
+# time_samples = np.where(input_data==input_data.min())
 
 # --- Plot resulting sine waveform
 # plt.plot(np.arange(samples), x)
@@ -42,21 +41,21 @@ device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 wandb.init(project="PNS Denoising",
            config = {
               "learning_rate": 1e-3,
-              "epochs": 10,
+              "epochs": 50,
               "batch_size": 1,
-              "kernel_size": 3,
-              "mse_weight": 1})
+              "kernel_size": 5,
+              "mse_weight": 0.5})
 
 config = wandb.config
 
 print("Setting up coordinate VAE model...")
-encoder = Encoder(input_dim=1, latent_dim=1, kernel_size=config.kernel_size, num_layers=3, pool_step=4, device=device)
-decoder = Decoder(latent_dim=1, output_dim=1, kernel_size=config.kernel_size, num_layers=3, pool_step=4, device=device)
-model = CoordinateVAEModel(Encoder=encoder, Decoder=decoder, time_samples=time_samples)
+encoder = Encoder(input_dim=1, latent_dim=1, kernel_size=config.kernel_size, num_layers=3, pool_step=2, device=device)
+decoder = Decoder(latent_dim=1, output_dim=1, kernel_size=config.kernel_size, num_layers=3, pool_step=2, device=device)
+model = CoordinateVAEModel(Encoder=encoder, Decoder=decoder)
 
 # --- Hyperparameter setup
-mse_loss = nn.MSELoss(reduction='mean')
-kld_loss = nn.KLDivLoss(reduction='mean')
+mse_loss = nn.MSELoss(reduction='sum')
+kld_loss = nn.KLDivLoss(reduction='sum')
 
 def loss_function(x, x_hat, mse_weight=0.25):
     kld_weight = 1 - mse_weight
@@ -78,39 +77,39 @@ model.train()
 if torch.cuda.is_available():
     model.cuda()
 
-x = torch.from_numpy(input_data).float().to(device)
+# x = torch.from_numpy(input_data).float().to(device)
+x = torch.from_numpy(x).float().to(device)
 x = torch.unsqueeze(x, 0)
-# x = torch.unsqueeze(x, 0) # Expanding to (B, C, L) format (B=batch size, C=channels, L=length)
+x = torch.unsqueeze(x, 0) # Expanding to (B, C, L) format (B=batch size, C=channels, L=length)
 x.requires_grad = True
 
 for epoch in range(config.epochs):
-    for data in input_data:
-        overall_loss = 0
-        model.epoch = epoch
+    overall_loss = 0
+    model.epoch = epoch
 
-        optimizer.zero_grad()
+    optimizer.zero_grad()
 
-        x_hat = model(data)
-        loss = loss_function(data, x_hat, mse_weight=config.mse_weight)
+    x_hat = model(x)
+    loss = loss_function(x, x_hat, mse_weight=config.mse_weight)
+    
+    overall_loss += loss.item()
+    
+    loss.backward()
+
+    # print("-----------------------------------------------------")
+    # for i in range(2):
+    #     print(f"Encoder weights in layer {i}: {model.Encoder.layers[i].weight}")
+    #     print(f"Decoder weights in layer {i}: {model.Decoder.layers[i].weight}")
+    #     print(f"Encoder grad for weights in layer {i}: {model.Encoder.layers[i].weight.grad}")
+    #     print(f"Decoder grad for weights in layer {i}: {model.Decoder.layers[i].weight.grad}")
+    #     print("\n ----- \n")
         
-        overall_loss += loss.item()
+    optimizer.step()
         
-        loss.backward()
-
-        # print("-----------------------------------------------------")
-        # for i in range(2):
-        #     print(f"Encoder weights in layer {i}: {model.Encoder.layers[i].weight}")
-        #     print(f"Decoder weights in layer {i}: {model.Decoder.layers[i].weight}")
-        #     print(f"Encoder grad for weights in layer {i}: {model.Encoder.layers[i].weight.grad}")
-        #     print(f"Decoder grad for weights in layer {i}: {model.Decoder.layers[i].weight.grad}")
-        #     print("\n ----- \n")
-            
-        optimizer.step()
-            
-        print("\tEpoch", epoch + 1, "complete!", "\tLoss: ", loss.item())
-        wandb.log({"Epoch loss": loss.item()})
-            
-    print("Finished!")
+    print("\tEpoch", epoch + 1, "complete!", "\tLoss: ", loss.item())
+    wandb.log({"Epoch loss": loss.item()})
+        
+print("Finished!")
 
 # --- Inference
 model.eval()
