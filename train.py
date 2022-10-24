@@ -1,3 +1,4 @@
+import gc
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -13,17 +14,21 @@ import matplotlib.pyplot as plt
 from models.vae_model import *
 from datasets.vagus_dataset import VagusDataset
 
+# Address GPU memory issues (source: https://stackoverflow.com/a/66921450)
+gc.collect()
+torch.cuda.empty_cache()
+
 # Select GPU if available
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
 # Weights&Biases initialisation
 wandb.init(project="PNS Denoising",
         config = {
-            "learning_rate": 1e-3,
-            "epochs": 1,
-            "batch_size": 32,
+            "learning_rate": 0.05,
+            "epochs": 50,
+            "batch_size": 16,
             "kernel_size": 3,
-            "mse_weight": 0.2})
+            "mse_weight": 1})
 
 config = wandb.config
 
@@ -43,13 +48,13 @@ test_dataloader = DataLoader(test_dataset, batch_size=config.batch_size, shuffle
 input_dim = 2048 # TODO: don't hardcode this, find out from input
 
 print("Setting up coordinate VAE model...")
-encoder = Encoder(input_dim=1, latent_dim=1, kernel_size=config.kernel_size, num_layers=6, pool_step=2, device=device)
-decoder = Decoder(latent_dim=1, output_dim=1, kernel_size=config.kernel_size, num_layers=6, pool_step=2, device=device)
+encoder = Encoder(input_dim=1, latent_dim=1, kernel_size=config.kernel_size, num_layers=3, pool_step=2, device=device)
+decoder = Decoder(latent_dim=1, output_dim=1, kernel_size=config.kernel_size, num_layers=3, pool_step=2, device=device)
 model = CoordinateVAEModel(Encoder=encoder, Decoder=decoder)
 
 # Hyperparameter setup
-mse_loss = nn.MSELoss(reduction='sum')
-kld_loss = nn.KLDivLoss(reduction='sum')
+mse_loss = nn.MSELoss()
+kld_loss = nn.KLDivLoss()
 
 def loss_function(x, x_hat, mse_weight=0.25):
     kld_weight = 1 - mse_weight
@@ -65,10 +70,15 @@ wandb.watch(model)
 
 # Training
 print("Start training VAE...")
+
+if torch.cuda.is_available():
+    model.cuda()
+
 model.train()
 
 for epoch in range(config.epochs):
     overall_loss = 0
+    # TODO: Check if epoch should bezero-indexed or not - doesn't seem to make a difference?
     model.epoch = epoch
 
     for batch_idx, x in enumerate(train_dataloader):

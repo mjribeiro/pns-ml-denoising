@@ -1,3 +1,4 @@
+import copy
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
@@ -40,11 +41,11 @@ device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 # Weights&Biases initialisation
 wandb.init(project="PNS Denoising",
            config = {
-              "learning_rate": 1e-3,
-              "epochs": 50,
+              "learning_rate": 0.01,
+              "epochs": 1000,
               "batch_size": 1,
-              "kernel_size": 5,
-              "mse_weight": 0.5})
+              "kernel_size": 3,
+              "mse_weight": 1})
 
 config = wandb.config
 
@@ -54,8 +55,8 @@ decoder = Decoder(latent_dim=1, output_dim=1, kernel_size=config.kernel_size, nu
 model = CoordinateVAEModel(Encoder=encoder, Decoder=decoder)
 
 # --- Hyperparameter setup
-mse_loss = nn.MSELoss(reduction='sum')
-kld_loss = nn.KLDivLoss(reduction='sum')
+mse_loss = nn.MSELoss()
+kld_loss = nn.KLDivLoss()
 
 def loss_function(x, x_hat, mse_weight=0.25):
     kld_weight = 1 - mse_weight
@@ -66,7 +67,7 @@ def loss_function(x, x_hat, mse_weight=0.25):
     return (mse_weight * mse) + (kld_weight * -kld)
 
 
-optimizer = Adam(model.parameters(), lr=config.learning_rate, weight_decay=1e-6)
+optimizer = Adam(model.parameters(), lr=config.learning_rate, weight_decay=1e-4)
 wandb.watch(model, log="all")
 
 # --- Training - 1 epoch?
@@ -83,16 +84,18 @@ x = torch.unsqueeze(x, 0)
 x = torch.unsqueeze(x, 0) # Expanding to (B, C, L) format (B=batch size, C=channels, L=length)
 x.requires_grad = True
 
+best_loss = 99999.0
+
 for epoch in range(config.epochs):
     overall_loss = 0
-    model.epoch = epoch
+    model.epoch = epoch + 1
 
     optimizer.zero_grad()
 
     x_hat = model(x)
     loss = loss_function(x, x_hat, mse_weight=config.mse_weight)
     
-    overall_loss += loss.item()
+    overall_loss += loss.item()*len(x)
     
     loss.backward()
 
@@ -108,15 +111,18 @@ for epoch in range(config.epochs):
         
     print("\tEpoch", epoch + 1, "complete!", "\tLoss: ", loss.item())
     wandb.log({"Epoch loss": loss.item()})
+
+    if loss < best_loss:
+        best_model = copy.deepcopy(model)
         
 print("Finished!")
 
 # --- Inference
-model.eval()
+best_model.eval()
 
 with torch.no_grad():
-    model.training = False
-    x_hat = model(x)
+    best_model.training = False
+    x_hat = best_model(x)
 
 # x = x.view(16, 1, input_dim)
 plt.plot(x.cpu().detach().numpy()[0][0])

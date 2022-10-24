@@ -23,21 +23,31 @@ class Encoder(nn.Module):
         self.num_layers = num_layers
         self.layers = nn.ModuleList()
 
-        for i in range(self.num_layers-1):
-            self.layers.append(nn.Conv1d(in_channels=input_dim * (2 ** i), 
-                                         out_channels=input_dim * (2 ** (i + 1)), 
-                                         kernel_size=kernel_size, 
-                                         padding=math.floor(kernel_size/2), 
-                                         stride=1))
-        self.layers.append(nn.Conv1d(in_channels=input_dim * (2 ** (i + 1)), 
-                                     out_channels=latent_dim, 
+        # for i in range(self.num_layers-1):
+        #     self.layers.append(nn.Conv1d(in_channels=input_dim * (2 ** i), 
+        #                                  out_channels=input_dim * (2 ** (i + 1)), 
+        #                                  kernel_size=kernel_size, 
+        #                                  padding=math.floor(kernel_size/2), 
+        #                                  stride=1))
+        self.layers.append(nn.Conv1d(in_channels=1, 
+                                     out_channels=16, 
+                                     kernel_size=kernel_size, 
+                                     padding=math.floor(kernel_size/2), 
+                                     stride=1))
+        self.layers.append(nn.Conv1d(in_channels=16, 
+                                     out_channels=32, 
+                                     kernel_size=kernel_size, 
+                                     padding=math.floor(kernel_size/2), 
+                                     stride=1))
+        self.layers.append(nn.Conv1d(in_channels=32, 
+                                     out_channels=1, 
                                      kernel_size=kernel_size, 
                                      padding=math.floor(kernel_size/2), 
                                      stride=1))
 
         self.maxpool    = nn.MaxPool1d(kernel_size=self.pool_step, stride=self.pool_step)
-        self.leaky_relu = nn.LeakyReLU(0.2)
-        self.dropout    = nn.Dropout(0.2)
+        self.leaky_relu = nn.LeakyReLU()
+        self.dropout    = nn.Dropout(0.05)
         
         self.training = True
     
@@ -47,6 +57,10 @@ class Encoder(nn.Module):
         for layer in self.layers:
             h_   = self.dropout(self.leaky_relu(self.maxpool(layer(h_))))
         return h_
+        # h_ = x
+        # for layer in self.layers:
+        #     h_   = F.relu(self.maxpool(layer(h_)))
+        # return h_
 
 
 class Decoder(nn.Module):
@@ -59,27 +73,42 @@ class Decoder(nn.Module):
         self.num_layers = num_layers
         self.layers = nn.ModuleList()
 
-        for i in range(self.num_layers-1):
-            self.layers.append(nn.ConvTranspose1d(in_channels=latent_dim * (2 ** i), 
-                                                  out_channels=latent_dim * (2 ** (i + 1)), 
-                                                  kernel_size=self.pool_step,
-                                                  padding=0, 
-                                                  stride=self.pool_step))
-        self.layers.append(nn.ConvTranspose1d(in_channels=latent_dim * (2 ** (i + 1)), 
-                                              out_channels=output_dim,
+        # for i in range(self.num_layers-1):
+        #     self.layers.append(nn.ConvTranspose1d(in_channels=latent_dim * (2 ** i), 
+        #                                           out_channels=latent_dim * (2 ** (i + 1)), 
+        #                                           kernel_size=self.pool_step,
+        #                                           padding=0, 
+        #                                           stride=self.pool_step))
+        self.layers.append(nn.ConvTranspose1d(in_channels=1, 
+                                              out_channels=16,
                                               kernel_size=self.pool_step, 
                                               padding=0, 
                                               stride=self.pool_step))
-        self.dropout    = nn.Dropout(0.2)
-        self.leaky_relu = nn.LeakyReLU(0.2)
+        self.layers.append(nn.ConvTranspose1d(in_channels=16, 
+                                              out_channels=32,
+                                              kernel_size=self.pool_step, 
+                                              padding=0, 
+                                              stride=self.pool_step))
+        self.layers.append(nn.ConvTranspose1d(in_channels=32, 
+                                              out_channels=1,
+                                              kernel_size=self.pool_step, 
+                                              padding=0, 
+                                              stride=self.pool_step))
+
+        self.dropout    = nn.Dropout(0.05)
+        self.leaky_relu = nn.LeakyReLU()
         self.tanh       = nn.Tanh()
         
 
     def forward(self, x):
         h = x
         for layer_idx in range(self.num_layers-1):
-            h   = self.leaky_relu(self.layers[layer_idx](self.dropout(h)))
-        return self.tanh(self.layers[-1](self.dropout(h)))
+            h   = self.leaky_relu(self.dropout(self.layers[layer_idx](h)))
+        return self.tanh(self.dropout(self.layers[-1](h)))
+        # h = x
+        # for layer_idx in range(self.num_layers-1):
+        #     h   = F.relu(self.layers[layer_idx](h))
+        # return self.tanh(self.layers[-1](h))
     
 
 class CoordinateVAEModel(nn.Module):
@@ -95,19 +124,20 @@ class CoordinateVAEModel(nn.Module):
         # Get logits from encoder
         logits = self.Encoder(x)
 
-        # Gumbel-Softmax activation on the latent space
-        tau = 2 ** (-0.0003*self.epoch)
+        # # Gumbel-Softmax activation on the latent space
+        # tau = 2*math.exp(-0.0003*self.epoch)
 
-        if self.Encoder.training == True:
-            y_hard = F.gumbel_softmax(logits, tau=tau, hard=True)
-            y_soft = F.gumbel_softmax(logits, tau=tau, hard=False)
-            onehot = y_hard - y_soft.detach() + y_soft
-            # onehot = F.gumbel_softmax(logits, tau=tau, hard=True)
-        else:
-            y_hard = F.gumbel_softmax(logits, tau=0.1, hard=True)
-            y_soft = F.gumbel_softmax(logits, tau=0.1, hard=False)
-            onehot = y_hard - y_soft.detach() + y_soft
-            # onehot = F.gumbel_softmax(logits, tau=0.1, hard=True)
+        # if self.Encoder.training == True:
+        #     y_hard = F.gumbel_softmax(logits, tau=tau, hard=True)
+        #     y_soft = F.gumbel_softmax(logits, tau=tau, hard=False)
+        #     onehot = y_hard - y_soft.detach() + y_soft
+        #     # onehot = F.gumbel_softmax(logits, tau=tau, hard=True)
+        # else:
+        #     y_hard = F.gumbel_softmax(logits, tau=0.1, hard=True)
+        #     y_soft = F.gumbel_softmax(logits, tau=0.1, hard=False)
+        #     onehot = y_hard - y_soft.detach() + y_soft
+        #     # onehot = F.gumbel_softmax(logits, tau=0.1, hard=True)
 
-        # Get output from decoder
-        return self.Decoder(onehot)
+        # # Get output from decoder
+        # return self.Decoder(onehot)
+        return self.Decoder(logits)
