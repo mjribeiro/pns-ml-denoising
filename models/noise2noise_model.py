@@ -53,30 +53,19 @@ class Noise2NoiseDecoder(nn.Module):
         self.num_layers = num_layers
         self.layers = nn.ModuleList()
 
-        in_channels = [48, 96, 96, 96, 96, 96, 96, 96, 96, 64, 32]
+        in_channels = [96, 96, 144, 96, 144, 96, 144, 96, 97, 64, 32]
         out_channels = [96, 96, 96, 96, 96, 96, 96, 96, 64, 32, 1]
 
-        for i in range(0, num_layers-1, 2):
-            self.layers.append(nn.ConvTranspose1d(in_channels=in_channels[i], 
-                                                  out_channels=out_channels[i], 
-                                                  kernel_size=pool_step,
-                                                  padding=0, 
-                                                  stride=pool_step))
-            self.layers.append(nn.Conv1d(in_channels=in_channels[i + 1], 
-                                         out_channels=out_channels[i + 1], 
-                                         kernel_size=kernel_size, 
-                                         padding=math.floor(kernel_size/2), 
-                                         stride=1))
-        self.layers.append(nn.Conv1d(in_channels=in_channels[-1], 
-                                         out_channels=out_channels[-1], 
+        for i in range(0, num_layers):
+            self.layers.append(nn.Conv1d(in_channels=in_channels[i], 
+                                         out_channels=out_channels[i], 
                                          kernel_size=kernel_size, 
                                          padding=math.floor(kernel_size/2), 
                                          stride=1))
 
+        self.upsample = nn.Upsample(scale_factor=pool_step)
         self.leaky_relu = nn.LeakyReLU(0.1)
         self.tanh = nn.Tanh()
-        # self.linear = nn.Linear(in_features=data_length,
-        #                         out_features=data_length)
 
     def forward(self, x, encodings):
         # Reverse encodings list, later encoding layers go in first
@@ -84,8 +73,9 @@ class Noise2NoiseDecoder(nn.Module):
 
         h = x
         for layer_idx in range(0, self.num_layers-1, 2):
+            h   = self.upsample(h)
+            h   = torch.cat([h, encodings[int(layer_idx/2)]], dim=1)
             h   = self.leaky_relu(self.layers[layer_idx](h))
-            h   = torch.cat((h, encodings[int(layer_idx/2)]), dim=1)
             h   = self.leaky_relu(self.layers[layer_idx + 1](h))
         return self.tanh(self.layers[-1](h))
 
