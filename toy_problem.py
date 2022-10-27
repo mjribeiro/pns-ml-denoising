@@ -35,7 +35,7 @@ x_delayed_flat = x_delayed.flatten()
 # plt.show()
 
 # Take smaller windows from main sine signal
-samples = 256
+samples = 128
 x_windows = []
 for i in range(0, len(x_flat) - samples, samples):
     x_windows.append(np.asarray([x_flat[i:i+samples], x_delayed_flat[i:i+samples]]))
@@ -73,8 +73,8 @@ device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 # Weights&Biases initialisation
 wandb.init(project="PNS Denoising",
            config = {
-              "learning_rate": 0.05,
-              "epochs": 300,
+              "learning_rate": 0.0005,
+              "epochs": 5000,
               "batch_size": 1,
               "kernel_size": 3,
               "mse_weight": 1})
