@@ -24,27 +24,15 @@ class Encoder(nn.Module):
         self.num_layers = num_layers
         self.layers = nn.ModuleList()
 
-        # for i in range(self.num_layers-1):
-        #     self.layers.append(nn.Conv1d(in_channels=input_dim * (2 ** i), 
-        #                                  out_channels=input_dim * (2 ** (i + 1)), 
-        #                                  kernel_size=kernel_size, 
-        #                                  padding=math.floor(kernel_size/2), 
-        #                                  stride=1))
-        self.layers.append(nn.Conv1d(in_channels=2, 
-                                     out_channels=32, 
-                                     kernel_size=kernel_size, 
-                                     padding=math.floor(kernel_size/2), 
-                                     stride=1))
-        self.layers.append(nn.Conv1d(in_channels=32, 
-                                     out_channels=1, 
-                                     kernel_size=kernel_size, 
-                                     padding=math.floor(kernel_size/2), 
-                                     stride=1))
-        # self.layers.append(nn.Conv1d(in_channels=32, 
-        #                              out_channels=30, 
-        #                              kernel_size=kernel_size, 
-        #                              padding=math.floor(kernel_size/2), 
-        #                              stride=1))
+        in_channels = [2, 32]
+        out_channels = [32, 2]
+        
+        for i in range(self.num_layers):
+            self.layers.append(nn.Conv1d(in_channels=in_channels[i], 
+                                         out_channels=out_channels[i], 
+                                         kernel_size=kernel_size, 
+                                         padding=math.floor(kernel_size/2), 
+                                         stride=1))
 
         self.maxpool    = nn.MaxPool1d(kernel_size=self.pool_step, stride=self.pool_step)
         self.leaky_relu = nn.LeakyReLU()
@@ -62,13 +50,9 @@ class Encoder(nn.Module):
         data_length = h_.shape[2]
 
         # I think this sort of "flattening" helps a bit with the onehot?
-        h_ = h_.view(h_.shape[0], latent_size * data_length)
+        # h_ = h_.view(h_.shape[0], latent_size * data_length)
         
         return h_, latent_size, data_length
-        # h_ = x
-        # for layer in self.layers:
-        #     h_   = F.relu(self.maxpool(layer(h_)))
-        # return h_
 
 
 class Decoder(nn.Module):
@@ -81,27 +65,15 @@ class Decoder(nn.Module):
         self.num_layers = num_layers
         self.layers = nn.ModuleList()
 
-        # for i in range(self.num_layers-1):
-        #     self.layers.append(nn.ConvTranspose1d(in_channels=latent_dim * (2 ** i), 
-        #                                           out_channels=latent_dim * (2 ** (i + 1)), 
-        #                                           kernel_size=self.pool_step,
-        #                                           padding=0, 
-        #                                           stride=self.pool_step))
-        self.layers.append(nn.ConvTranspose1d(in_channels=1, 
-                                              out_channels=32,
-                                              kernel_size=self.pool_step, 
-                                              padding=0, 
-                                              stride=self.pool_step))
-        self.layers.append(nn.ConvTranspose1d(in_channels=32, 
-                                              out_channels=2,
-                                              kernel_size=self.pool_step, 
-                                              padding=0, 
-                                              stride=self.pool_step))
-        # self.layers.append(nn.ConvTranspose1d(in_channels=32, 
-        #                                       out_channels=1,
-        #                                       kernel_size=self.pool_step, 
-        #                                       padding=0, 
-        #                                       stride=self.pool_step))
+        in_channels = [2, 32]
+        out_channels = [32, 2]
+
+        for i in range(self.num_layers):
+            self.layers.append(nn.ConvTranspose1d(in_channels=in_channels[i], 
+                                                  out_channels=out_channels[i], 
+                                                  kernel_size=self.pool_step,
+                                                  padding=0, 
+                                                  stride=self.pool_step))
 
         self.dropout    = nn.Dropout(0.05)
         self.leaky_relu = nn.LeakyReLU()
@@ -113,10 +85,6 @@ class Decoder(nn.Module):
         for layer_idx in range(self.num_layers-1):
             h   = self.leaky_relu(self.dropout(self.layers[layer_idx](h)))
         return self.tanh(self.dropout(self.layers[-1](h)))
-        # h = x
-        # for layer_idx in range(self.num_layers-1):
-        #     h   = F.relu(self.layers[layer_idx](h))
-        # return self.tanh(self.layers[-1](h))
     
 
 class CoordinateVAEModel(nn.Module):
@@ -132,7 +100,7 @@ class CoordinateVAEModel(nn.Module):
 
     def forward(self, x):
         # Get logits from encoder
-        logits, latent_size, data_length = self.Encoder(x)
+        latent_data, latent_size, data_length = self.Encoder(x)
 
         # Gumbel-Softmax activation on the latent space
         self.tau = 2*math.exp(-0.0003*self.epoch)
@@ -140,21 +108,21 @@ class CoordinateVAEModel(nn.Module):
         # onehot = F.gumbel_softmax(logits, tau=self.tau, hard=False)
 
         if self.Encoder.training == True:
-            y_hard = F.gumbel_softmax(logits, tau=self.tau, hard=True)
-            y_soft = F.gumbel_softmax(logits, tau=self.tau, hard=False)
-            onehot = y_hard - y_soft.detach() + y_soft
+            y_hard = F.gumbel_softmax(latent_data, tau=self.tau, hard=True)
+            y_soft = F.gumbel_softmax(latent_data, tau=self.tau, hard=False)
+            latent_data = y_hard - y_soft.detach() + y_soft
             # onehot = F.gumbel_softmax(logits, tau=tau, hard=True)
         else:
-            y_hard = F.gumbel_softmax(logits, tau=0.1, hard=True)
-            y_soft = F.gumbel_softmax(logits, tau=0.1, hard=False)
-            onehot = y_hard - y_soft.detach() + y_soft
+            y_hard = F.gumbel_softmax(latent_data, tau=0.1, hard=True)
+            y_soft = F.gumbel_softmax(latent_data, tau=0.1, hard=False)
+            latent_data = y_hard - y_soft.detach() + y_soft
             # onehot = F.gumbel_softmax(logits, tau=0.1, hard=True)
         
         # See comment in encoder about flattening
-        onehot = onehot.view(onehot.shape[0], latent_size, data_length)
+        # onehot = onehot.view(onehot.shape[0], latent_size, data_length)
         
         # Get output from decoder
         if self.Encoder.training == True:
-            return self.Decoder(onehot)
+            return self.Decoder(latent_data)
         else:
-            return self.Decoder(onehot), onehot
+            return self.Decoder(latent_data), latent_data

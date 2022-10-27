@@ -29,6 +29,7 @@ for i in range(num_repeats):
 x_flat = x.flatten()
 x_delayed_flat = x_delayed.flatten()
 
+# # Plot two-channel toy problem
 # plt.plot(x_flat)
 # plt.plot(x_delayed_flat)
 # plt.show()
@@ -38,6 +39,13 @@ samples = 256
 x_windows = []
 for i in range(0, len(x_flat) - samples, samples):
     x_windows.append(np.asarray([x_flat[i:i+samples], x_delayed_flat[i:i+samples]]))
+x_windows = np.asarray(x_windows)
+
+# # Check shape of data going in
+# print(x_windows.shape)
+# plt.plot(x_windows[10, 0, :])
+# plt.plot(x_windows[10, 1, :])
+# plt.show()
 
 # Store in dataloaders
 train_dataloader = DataLoader(x_windows, batch_size=8, shuffle=True)
@@ -151,14 +159,12 @@ with torch.no_grad():
         # onehot = onehot.cpu().numpy()
 
         # Store in x_hats
-        x_hats[idx, :, :] = x_hat
+        x_hats[idx, :, :] = x_hat[0]
         # onehots[idx, :] = onehot
-
-x_hats = x_hats.reshape(x_hats.shape[0]*x_hats.shape[2], 2)
 
 plt.plot(x.flatten(), label="original sine")
 plt.plot(x_delayed_flat, label="delayed sine")
-plt.plot(x_hats[:, 0], label="reconstructed original sine")
-plt.plot(x_hats[:, 1], label="reconstructed delayed sine")
+plt.plot(x_hats[:, 0, :].flatten(), label="reconstructed original sine")
+plt.plot(x_hats[:, 1, :].flatten(), label="reconstructed delayed sine")
 plt.legend()
 plt.show()
