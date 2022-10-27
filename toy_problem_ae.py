@@ -60,7 +60,7 @@ optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
 
 # --- Training
 # number of epochs to train the model
-n_epochs = 50
+n_epochs = 150
 
 # Prepare data for training
 x = torch.from_numpy(x).float()

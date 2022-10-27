@@ -16,22 +16,28 @@ from models.vae_model import *
 # --- Create sine wave
 fs = 30000
 f = 10
-samples = 10000
+total_samples = 10000
 num_repeats = 1
 
-x = np.zeros((num_repeats, samples))
+x = np.zeros((num_repeats, total_samples))
+x_delayed = np.zeros((num_repeats, total_samples))
 
 for i in range(num_repeats):
-    x[i, :] = np.sin(2 * np.pi * f * np.arange(samples) / fs)
-
+    x[i, :] = np.sin(2 * np.pi * f * np.arange(total_samples) / fs)
+    x_delayed[i, :] = np.roll(x[i, :], 1000)
 
 x_flat = x.flatten()
+x_delayed_flat = x_delayed.flatten()
+
+# plt.plot(x_flat)
+# plt.plot(x_delayed_flat)
+# plt.show()
 
 # Take smaller windows from main sine signal
-samples = 512
+samples = 256
 x_windows = []
 for i in range(0, len(x_flat) - samples, samples):
-    x_windows.append(x_flat[i:i+samples])
+    x_windows.append(np.asarray([x_flat[i:i+samples], x_delayed_flat[i:i+samples]]))
 
 # Store in dataloaders
 train_dataloader = DataLoader(x_windows, batch_size=8, shuffle=True)
@@ -59,8 +65,8 @@ device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 # Weights&Biases initialisation
 wandb.init(project="PNS Denoising",
            config = {
-              "learning_rate": 1,
-              "epochs": 500,
+              "learning_rate": 0.05,
+              "epochs": 300,
               "batch_size": 1,
               "kernel_size": 3,
               "mse_weight": 1})
@@ -85,7 +91,7 @@ def loss_function(x, x_hat, mse_weight=0.25):
     return (mse_weight * mse) + (kld_weight * -kld)
 
 
-optimizer = Adam(model.parameters(), lr=config.learning_rate, weight_decay=1e-4)
+optimizer = Adam(model.parameters(), lr=config.learning_rate, weight_decay=1e-5)
 wandb.watch(model, log="all")
 
 # --- Training - 1 epoch?
@@ -104,7 +110,7 @@ for epoch in range(config.epochs):
 
     for batch_idx, data in enumerate(train_dataloader):
         data = data.to(device).float()
-        data = data.unsqueeze(1) # Expanding to (B, C, L)
+        # data = data.unsqueeze(1) # Expanding to (B, C, L)
         
         optimizer.zero_grad()
 
@@ -134,20 +140,25 @@ best_model.eval()
 
 with torch.no_grad():
     best_model.training = False
-    x_hats = np.zeros((len(x_windows), samples))
-    onehots = np.zeros((len(x_windows), int(samples/4)))
+    x_hats = np.zeros((len(x_windows), 2, samples))
+    # onehots = np.zeros((len(x_windows), int(samples/4)))
     for idx, test_data in enumerate(test_dataloader):
-        test_data = test_data.unsqueeze(1).to(device).float()
+        test_data = test_data.to(device).float()
         x_hat, onehot = best_model(test_data)
 
         # Convert to numpy and send to cpu
         x_hat = x_hat.cpu().numpy()
-        onehot = onehot.cpu().numpy()
+        # onehot = onehot.cpu().numpy()
 
         # Store in x_hats
-        x_hats[idx, :] = x_hat
-        onehots[idx, :] = onehot
+        x_hats[idx, :, :] = x_hat
+        # onehots[idx, :] = onehot
 
-plt.plot(x.flatten())
-plt.plot(x_hats.flatten())
+x_hats = x_hats.reshape(x_hats.shape[0]*x_hats.shape[2], 2)
+
+plt.plot(x.flatten(), label="original sine")
+plt.plot(x_delayed_flat, label="delayed sine")
+plt.plot(x_hats[:, 0], label="reconstructed original sine")
+plt.plot(x_hats[:, 1], label="reconstructed delayed sine")
+plt.legend()
 plt.show()

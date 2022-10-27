@@ -30,7 +30,7 @@ class Encoder(nn.Module):
         #                                  kernel_size=kernel_size, 
         #                                  padding=math.floor(kernel_size/2), 
         #                                  stride=1))
-        self.layers.append(nn.Conv1d(in_channels=1, 
+        self.layers.append(nn.Conv1d(in_channels=2, 
                                      out_channels=32, 
                                      kernel_size=kernel_size, 
                                      padding=math.floor(kernel_size/2), 
@@ -60,7 +60,9 @@ class Encoder(nn.Module):
 
         latent_size = h_.shape[1]
         data_length = h_.shape[2]
-        h_ = h_.view(h_.shape[0], h_.shape[1] * h_.shape[2])
+
+        # I think this sort of "flattening" helps a bit with the onehot?
+        h_ = h_.view(h_.shape[0], latent_size * data_length)
         
         return h_, latent_size, data_length
         # h_ = x
@@ -91,7 +93,7 @@ class Decoder(nn.Module):
                                               padding=0, 
                                               stride=self.pool_step))
         self.layers.append(nn.ConvTranspose1d(in_channels=32, 
-                                              out_channels=1,
+                                              out_channels=2,
                                               kernel_size=self.pool_step, 
                                               padding=0, 
                                               stride=self.pool_step))
@@ -148,6 +150,7 @@ class CoordinateVAEModel(nn.Module):
             onehot = y_hard - y_soft.detach() + y_soft
             # onehot = F.gumbel_softmax(logits, tau=0.1, hard=True)
         
+        # See comment in encoder about flattening
         onehot = onehot.view(onehot.shape[0], latent_size, data_length)
         
         # Get output from decoder
