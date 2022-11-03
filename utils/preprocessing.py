@@ -5,12 +5,12 @@ from sklearn.preprocessing import StandardScaler
 from scipy import signal
 
 
-def bandpass_filter(data, freqs=[100, 10e3], fs=100e3, order=4):
+def bandpass_filter(data, freqs=[100, 5e3], fs=100e3, order=4):
     """
     Apply low-pass filter using scipy's signal functions.
     """
     b, a = signal.butter(order, freqs, fs=fs, btype='bandpass')
-    data_filt = signal.lfilter(b, a, data)
+    data_filt = signal.filtfilt(b, a, data, axis=0)
 
     return data_filt
 
@@ -24,17 +24,22 @@ def extract_window(data, fs=100e3, start=0, win_length=0.008):
     return data[int(start):int(end)]
 
 
-def generate_dataset(data, fs=100e3, num_channels=9, win_length=0.008):
+def generate_dataset(data, fs=100e3, num_channels=9, win_length=0.008, flattened=False):
     """
     Take multiple channel data and return list of windows of data
     """
     all_columns = data.columns
 
-    num_windows = np.floor(len(data["Channel 1"]) / (win_length*fs))
-    vagus_dataset = np.zeros((int(num_windows * num_channels), int(win_length*fs)))
+    num_windows = int(np.floor(len(data["Channel 1"]) / (win_length*fs)))
 
-    store_index = 0
-    for column in all_columns[1:]:
+    if flattened:
+        vagus_dataset = np.zeros((num_windows * num_channels, int(win_length*fs)))
+    else:
+        vagus_dataset = np.zeros((num_windows, num_channels, int(win_length*fs)))
+
+
+    for column, ch in zip(all_columns[1:], range(len(all_columns[1:]))):
+        store_index = 0
         channel_data = data[column]
 
         # Standardise mean and standard dev
@@ -43,14 +48,18 @@ def generate_dataset(data, fs=100e3, num_channels=9, win_length=0.008):
 
         # Remove artefacts and rescale to [-1, 1]
         channel_data = minmax_scaling(remove_artefacts(channel_data))
+        channel_data = bandpass_filter(channel_data)
 
         for search_index in range(0, len(channel_data), int(win_length*fs)):
             extracted_window = extract_window(channel_data, fs=fs, start=search_index, win_length=win_length)
 
             if len(extracted_window) < (int(win_length*fs)):
                 break
-            else:
+            
+            if flattened:
                 vagus_dataset[store_index] = extracted_window.flatten()
+            else:
+                vagus_dataset[store_index, ch, :] = extracted_window.flatten()
 
             store_index += 1
 
