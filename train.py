@@ -1,10 +1,11 @@
+import copy
 import gc
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import wandb
 
-from torch.optim import Adam
+from torch.optim import AdamW
 from torch.utils.data import DataLoader
 
 # Temp
@@ -24,11 +25,10 @@ device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 # Weights&Biases initialisation
 wandb.init(project="PNS Denoising",
         config = {
-            "learning_rate": 0.05,
-            "epochs": 50,
-            "batch_size": 16,
-            "kernel_size": 3,
-            "mse_weight": 1})
+            "learning_rate": 0.01,
+            "epochs": 1,
+            "batch_size": 32,
+            "kernel_size": 3})
 
 config = wandb.config
 
@@ -39,34 +39,49 @@ test_dataset  = VagusDataset(train=False)
 train_dataloader = DataLoader(train_dataset, batch_size=config.batch_size, shuffle=True)
 test_dataloader = DataLoader(test_dataset, batch_size=config.batch_size, shuffle=True)
 
-# sample = train_dataset.__getitem__(0)[0]
+# sample = train_dataset.__getitem__(0)
 
-# plt.plot(sample)
+# # Plot single channel
+# plt.plot(sample[0, 0, :])
 # plt.show()
 
 # Define model
-input_dim = 2048 # TODO: don't hardcode this, find out from input
-
 print("Setting up coordinate VAE model...")
-encoder = Encoder(input_dim=1, latent_dim=1, kernel_size=config.kernel_size, num_layers=3, pool_step=2, device=device)
-decoder = Decoder(latent_dim=1, output_dim=1, kernel_size=config.kernel_size, num_layers=3, pool_step=2, device=device)
-model = CoordinateVAEModel(Encoder=encoder, Decoder=decoder)
+encoder = Encoder(input_dim=9, 
+                latent_dim=100, 
+                kernel_size=config.kernel_size, 
+                num_layers=4, 
+                pool_step=4, 
+                batch_size=config.batch_size, 
+                device=device)
+decoder = Decoder(latent_dim=100, 
+                output_dim=9, 
+                kernel_size=config.kernel_size, 
+                num_layers=4, 
+                pool_step=4, 
+                device=device)
+model = CoordinateVAEModel(Encoder=encoder, 
+                        Decoder=decoder)
 
 # Hyperparameter setup
 mse_loss = nn.MSELoss()
 kld_loss = nn.KLDivLoss()
 
-def loss_function(x, x_hat, mse_weight=0.25):
-    kld_weight = 1 - mse_weight
+def loss_function(x, x_hat, kld_weight):
 
-    mse = mse_loss(x, x_hat)
-    kld = kld_loss(F.log_softmax(x, -1), F.softmax(x_hat, -1))
+    MSE = mse_loss(x, x_hat)
+    KLD = kld_loss(F.log_softmax(x, -1), F.softmax(x_hat, -1))
 
-    return (mse_weight * mse) + (kld_weight * -kld)
+    MSE = (1 - kld_weight) * MSE
+    KLD = kld_weight * KLD
+    
+    return MSE + KLD, KLD
 
 
-optimizer = Adam(model.parameters(), lr=config.learning_rate)
-wandb.watch(model)
+optimizer = AdamW(model.parameters(), 
+                lr=config.learning_rate,
+                weight_decay=1e-5)
+wandb.watch(model, log="all")
 
 # Training
 print("Start training VAE...")
@@ -76,9 +91,16 @@ if torch.cuda.is_available():
 
 model.train()
 
+best_loss = 99999.0
+kld_weight = 0.5
+kld_rate = 0 # TODO: Change this to rate of increase as per:
+                    # https://arxiv.org/pdf/1511.06349.pdf
+# kld_tracked = []
+# kld_w_tracked = []
+
 for epoch in range(config.epochs):
     overall_loss = 0
-    # TODO: Check if epoch should bezero-indexed or not - doesn't seem to make a difference?
+    # TODO: Check if epoch should be zero-indexed or not - doesn't seem to make a difference?
     model.epoch = epoch
 
     for batch_idx, x in enumerate(train_dataloader):
@@ -87,7 +109,13 @@ for epoch in range(config.epochs):
         optimizer.zero_grad()
 
         x_hat = model(x)
-        loss = loss_function(x, x_hat, mse_weight=config.mse_weight)
+        loss, kld = loss_function(x, x_hat, kld_weight=kld_weight)
+
+        if loss < best_loss:
+            best_model = copy.deepcopy(model)
+
+        # kld_tracked.append(kld.detach().cpu())
+        # kld_w_tracked.append(kld_weight)
         
         overall_loss += loss.item()
         

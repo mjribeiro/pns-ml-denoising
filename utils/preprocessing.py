@@ -24,7 +24,7 @@ def extract_window(data, fs=100e3, start=0, win_length=0.008):
     return data[int(start):int(end)]
 
 
-def generate_dataset(data, fs=100e3, num_channels=9, win_length=0.008, flattened=False):
+def generate_datasets(data, fs=100e3, num_channels=9, win_length=0.008, flattened=False):
     """
     Take multiple channel data and return list of windows of data
     """
@@ -33,9 +33,13 @@ def generate_dataset(data, fs=100e3, num_channels=9, win_length=0.008, flattened
     num_windows = int(np.floor(len(data["Channel 1"]) / (win_length*fs)))
 
     if flattened:
-        vagus_dataset = np.zeros((num_windows * num_channels, int(win_length*fs)))
+        vagus_data_raw       = np.zeros((num_windows * num_channels, int(win_length*fs)))
+        vagus_data_bp_wide   = np.zeros((num_windows * num_channels, int(win_length*fs)))
+        vagus_data_bp_narrow = np.zeros((num_windows * num_channels, int(win_length*fs)))
     else:
-        vagus_dataset = np.zeros((num_windows, num_channels, int(win_length*fs)))
+        vagus_data_raw       = np.zeros((num_windows, num_channels, int(win_length*fs)))
+        vagus_data_bp_wide   = np.zeros((num_windows, num_channels, int(win_length*fs)))
+        vagus_data_bp_narrow = np.zeros((num_windows, num_channels, int(win_length*fs)))
 
 
     for column, ch in zip(all_columns[1:], range(len(all_columns[1:]))):
@@ -44,26 +48,35 @@ def generate_dataset(data, fs=100e3, num_channels=9, win_length=0.008, flattened
 
         # Standardise mean and standard dev
         scaler = StandardScaler()
+
         channel_data = scaler.fit_transform(np.asarray(channel_data).reshape(-1, 1))
 
         # Remove artefacts and rescale to [-1, 1]
         channel_data = minmax_scaling(remove_artefacts(channel_data))
-        channel_data = bandpass_filter(channel_data)
+        channel_data_wide_filt = bandpass_filter(channel_data, freqs=[50, 49.9e3])
+        channel_data_narrow_filt = bandpass_filter(channel_data, freqs=[100, 10e3])
 
         for search_index in range(0, len(channel_data), int(win_length*fs)):
-            extracted_window = extract_window(channel_data, fs=fs, start=search_index, win_length=win_length)
 
-            if len(extracted_window) < (int(win_length*fs)):
+            extracted_win_raw         = extract_window(channel_data, fs=fs, start=search_index, win_length=win_length)
+            extracted_win_wide_filt   = extract_window(channel_data_wide_filt, fs=fs, start=search_index, win_length=win_length)
+            extracted_win_narrow_filt = extract_window(channel_data_narrow_filt, fs=fs, start=search_index, win_length=win_length)
+
+            if len(extracted_win_raw) < (int(win_length*fs)):
                 break
             
             if flattened:
-                vagus_dataset[store_index] = extracted_window.flatten()
+                vagus_data_raw[store_index]       = extracted_win_raw.flatten()
+                vagus_data_bp_wide[store_index]   = extracted_win_wide_filt.flatten()
+                vagus_data_bp_narrow[store_index] = extracted_win_narrow_filt.flatten()
             else:
-                vagus_dataset[store_index, ch, :] = extracted_window.flatten()
+                vagus_data_raw[store_index, ch, :]       = extracted_win_raw.flatten()
+                vagus_data_bp_wide[store_index, ch, :]   = extracted_win_wide_filt.flatten()
+                vagus_data_bp_narrow[store_index, ch, :] = extracted_win_narrow_filt.flatten()
 
             store_index += 1
 
-    return vagus_dataset
+    return vagus_data_raw, vagus_data_bp_wide, vagus_data_bp_narrow
 
  
 def minmax_scaling(data):

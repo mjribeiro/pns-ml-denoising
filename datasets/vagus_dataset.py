@@ -9,8 +9,9 @@ class VagusDataset(torch.utils.data.Dataset):
 
 
     def __getitem__(self, idx: int):
-        data_torch = torch.from_numpy(self.data[idx])
-        return torch.unsqueeze(data_torch, 0)
+        # data_torch = torch.from_numpy(self.data[idx])
+        # return data_torch.unsqueeze(0)
+        return torch.from_numpy(self.data[idx])
 
     
     def __len__(self) -> int:
@@ -18,6 +19,7 @@ class VagusDataset(torch.utils.data.Dataset):
 
     
     def _load_data(self):
+        # TODO: Add options for loading raw or filtered data
         data_file = f"vagus_{'train' if self.train else 'test'}.npy"
         data = np.load(f"./data/Metcalfe-2014/{data_file}")
 
