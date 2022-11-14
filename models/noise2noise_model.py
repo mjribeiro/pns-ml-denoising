@@ -7,13 +7,13 @@ import torch.nn.functional as F
 # TODO: Implement skips and concatenation
 
 class Noise2NoiseEncoder(nn.Module):
-    def __init__(self, num_layers=7, kernel_size=3, pool_step=2) -> None:
+    def __init__(self, num_channels, num_layers=7, kernel_size=3, pool_step=2) -> None:
         super(Noise2NoiseEncoder, self).__init__()
 
         self.num_layers = num_layers
         self.layers = nn.ModuleList()
 
-        in_channels = [1, 48, 48, 48, 48, 48, 48]
+        in_channels = [num_channels, 48, 48, 48, 48, 48, 48]
         out_channels = [48, 48, 48, 48, 48, 48, 48]
         
         for i in range(num_layers):
@@ -47,14 +47,14 @@ class Noise2NoiseEncoder(nn.Module):
 
 
 class Noise2NoiseDecoder(nn.Module):
-    def __init__(self, data_length, num_layers=11, kernel_size=3, pool_step=2) -> None:
+    def __init__(self, num_channels, data_length, num_layers=11, kernel_size=3, pool_step=2) -> None:
         super(Noise2NoiseDecoder, self).__init__()
 
         self.num_layers = num_layers
         self.layers = nn.ModuleList()
 
-        in_channels = [96, 96, 144, 96, 144, 96, 144, 96, 97, 64, 32]
-        out_channels = [96, 96, 96, 96, 96, 96, 96, 96, 64, 32, 1]
+        in_channels = [96, 96, 144, 96, 144, 96, 144, 96, 96+num_channels, 64, 32]
+        out_channels = [96, 96, 96, 96, 96, 96, 96, 96, 64, 32, num_channels]
 
         for i in range(0, num_layers):
             self.layers.append(nn.Conv1d(in_channels=in_channels[i], 

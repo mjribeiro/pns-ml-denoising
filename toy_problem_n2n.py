@@ -17,15 +17,26 @@ from models.noise2noise_model import *
 # --- Create sine wave
 fs = 30000
 f = 50
+total_samples = 5 * 60 * fs # 5 mins
 samples = 2048
 num_repeats = 1
 
-x = np.sin(2 * np.pi * f * np.arange(samples) / fs) + np.random.normal(0, 0.5, samples)
-# x = np.sin(2 * np.pi * f * np.arange(samples) / fs)
+# x = np.sin(2 * np.pi * f * np.arange(total_samples) / fs)
+x_clean = np.sin(2 * np.pi * f * np.arange(total_samples) / fs)
+x = x_clean + np.random.normal(0, 0.6, total_samples)
+x_cleaner = x_clean + np.random.normal(0, 0.3, total_samples)
 
-# Rescale to [-1, 1] after adding noise
+# Also normalise clean
+x_clean = 2 * (x_clean - np.min(x_cleaner)) / (np.max(x_cleaner) - np.min(x_cleaner)) - 1
+# Normalise to [-1, 1]
 x = 2 * (x - np.min(x)) / (np.max(x) - np.min(x)) - 1
+x_cleaner = 2 * (x_cleaner - np.min(x_cleaner)) / (np.max(x_cleaner) - np.min(x_cleaner)) - 1
 
+
+x_windows = []
+for i in range(0, len(x) - samples, samples):
+    x_windows.append((x[i:i+samples], x_cleaner[i:i+samples]))
+# x_windows = np.asarray(x_windows)
 
 # --- Set up model
 # Select GPU if available
@@ -35,32 +46,29 @@ device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 wandb.init(project="PNS Denoising",
            config = {
               "learning_rate": 0.001,
-              "epochs": 500,
-              "batch_size": 1,
-              "kernel_size": 3,
-              "mse_weight": 1})
+              "epochs": 10,
+              "batch_size": 32,
+              "kernel_size": 3})
 
 config = wandb.config
 
+# Store in dataloaders
+train_dataloader = DataLoader(x_windows, batch_size=config.batch_size, shuffle=True)
+test_dataloader = DataLoader(x_windows, batch_size=1, shuffle=False)
+
 print("Setting up Noise2Noise model...")
 
-encoder = Noise2NoiseEncoder()
-decoder = Noise2NoiseDecoder(data_length=len(x))
+encoder = Noise2NoiseEncoder(num_channels=1)
+decoder = Noise2NoiseDecoder(num_channels=1, data_length=len(x))
 model = Noise2NoiseModel(encoder=encoder, decoder=decoder).to(device)
 
 # summary(model, [(1, samples)])
 
 # --- Hyperparameter setup
 mse_loss = nn.MSELoss()
-kld_loss = nn.KLDivLoss()
 
-def loss_function(x, x_hat, mse_weight=0.25):
-    kld_weight = 1 - mse_weight
-
-    mse = mse_loss(x, x_hat)
-    kld = kld_loss(F.log_softmax(x, -1), F.softmax(x_hat, -1))
-
-    return (mse_weight * mse) + (kld_weight * -kld)
+def loss_function(x, x_hat):
+    return mse_loss(x, x_hat)
 
 
 optimizer = Adam(model.parameters(), lr=config.learning_rate, weight_decay=1e-4)
@@ -69,10 +77,10 @@ optimizer = Adam(model.parameters(), lr=config.learning_rate, weight_decay=1e-4)
 print("Start training Noise2Noise model...")
 model.train()
 
-x = torch.from_numpy(x).to(device).float()
-x = torch.unsqueeze(x, 0)
-x = torch.unsqueeze(x, 0) # Expanding to (B, C, L)
-x.requires_grad = True
+# x = torch.from_numpy(x).to(device).float()
+# x = torch.unsqueeze(x, 0)
+# x = torch.unsqueeze(x, 0) # Expanding to (B, C, L)
+# x.requires_grad = True
 
 # Set up toy problem for PyTorch
 if torch.cuda.is_available():
@@ -82,28 +90,35 @@ best_loss = 99999.0
 
 for epoch in range(config.epochs):
     overall_loss = 0
-    model.epoch = epoch + 1
 
-    # for batch_idx, data in enumerate(train_dataloader):
-    optimizer.zero_grad()
-
-    x_hat = model(x)
-    loss = loss_function(x, x_hat, mse_weight=config.mse_weight)
-    
-    overall_loss += loss.item()*len(x)
-    
-    loss.backward()
-
-    # # Uncomment to print out model parameters (check if gradients are there)
-    # for param in model.parameters():
-    #     print(param.grad)
+    for batch_idx, (data, target) in enumerate(train_dataloader):
+        data = data.unsqueeze(1).to(device).float()
+        target = target.unsqueeze(1).to(device).float()
         
-    optimizer.step()
-
-    if loss < best_loss:
-        best_model = copy.deepcopy(model)
+        optimizer.zero_grad()
         
-    print("\tEpoch", epoch + 1, "complete!", "\tAverage Loss: ", overall_loss)
+        # if batch_idx==1:
+        #     plt.plot(data[0,0,:].cpu())
+        #     plt.plot(target[0,0,:].cpu())
+        #     plt.show()
+        
+        x_hat = model(data)
+        loss = loss_function(x_hat, target)
+        
+        overall_loss += loss.item()*len(data)
+        
+        loss.backward()
+
+        # # Uncomment to print out model parameters (check if gradients are there)
+        # for param in model.parameters():
+        #     print(param.grad)
+            
+        optimizer.step()
+
+        if loss < best_loss:
+            best_model = copy.deepcopy(model)
+        
+    print("\tEpoch", epoch + 1, "complete!", "\tAverage Loss: ", overall_loss / (batch_idx*config.batch_size))
     wandb.log({"loss": overall_loss})
         
 print("Finished!")
@@ -112,11 +127,21 @@ print("Finished!")
 best_model.eval()
 
 with torch.no_grad():
-    x_hat = best_model(x)
+    best_model.training = False
+    x_hats = np.zeros((len(x_windows), samples))
 
-    # Convert to numpy and send to cpu
-    x_hat = x_hat.cpu().numpy()
+    for idx, (test_data, _) in enumerate(test_dataloader):
+        test_data = test_data.unsqueeze(1).to(device).float()
+        x_hat = best_model(test_data)
 
-plt.plot(x.detach().cpu().numpy()[0][0])
-plt.plot(x_hat[0][0])
+        # Convert to numpy and send to cpu
+        x_hat = x_hat.cpu().numpy()
+        x_hats[idx, :] = x_hat[0]
+
+plt.plot(x_windows[0][0], label="Noisy input")
+plt.plot(x_windows[0][1], label="Less noisy input")
+plt.plot(x_clean[0:2048], label="Clean sine wave")
+# plt.plot(x_cleaner.detach().cpu(), label="Noisy target")
+plt.plot(x_hats.flatten()[0:2048], label="Reconstruction")
+plt.legend()
 plt.show()

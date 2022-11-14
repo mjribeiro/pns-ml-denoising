@@ -19,8 +19,36 @@ class VagusDataset(torch.utils.data.Dataset):
 
     
     def _load_data(self):
-        # TODO: Add options for loading raw or filtered data
-        data_file = f"vagus_{'train' if self.train else 'test'}.npy"
+        data_file = f"vagus_{'train' if self.train else 'test'}_bp_narrow.npy"
         data = np.load(f"./data/Metcalfe-2014/{data_file}")
 
         return data
+
+
+class VagusDatasetN2N(torch.utils.data.Dataset):
+    def __init__(self, train) -> None:
+        self.train : bool = train
+        self.data = self._load_data()
+        self.targets = self._load_targets()
+
+
+    def __getitem__(self, idx: int):
+        return torch.from_numpy(self.data[idx]), torch.from_numpy(self.targets[idx])
+
+    
+    def __len__(self) -> int:
+        return len(self.data)
+
+    
+    def _load_data(self):
+        data_file = f"vagus_{'train' if self.train else 'test'}_raw.npy"
+        data = np.load(f"./data/Metcalfe-2014/{data_file}")
+
+        return data
+
+
+    def _load_targets(self):
+        targets_file = f"vagus_{'train' if self.train else 'test'}_bp_narrow.npy"
+        targets = np.load(f"./data/Metcalfe-2014/{targets_file}")
+        
+        return targets

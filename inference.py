@@ -27,14 +27,14 @@ encoder = Encoder(input_dim=input_chs,
                 latent_dim=100, 
                 kernel_size=3, 
                 num_layers=4, 
-                pool_step=2, 
+                pool_step=4, 
                 batch_size=32, 
                 device=device)
 decoder = Decoder(latent_dim=100, 
                 output_dim=input_chs, 
                 kernel_size=3, 
                 num_layers=4, 
-                pool_step=2, 
+                pool_step=4, 
                 device=device)
 model = CoordinateVAEModel(Encoder=encoder, 
                         Decoder=decoder)
@@ -50,8 +50,8 @@ model.load_state_dict(torch.load(PATH))
 model.eval()
 
 with torch.no_grad():
-    x_hats = np.zeros((len(test_dataloader), 9, 800))
-    xs = np.zeros((len(test_dataloader), 9, 800))
+    x_hats = np.zeros((len(test_dataloader), 9, 1024))
+    xs = np.zeros((len(test_dataloader), 9, 1024))
     for batch_idx, x in enumerate(test_dataloader):
         x = x.to(device).float()
         model.training = False

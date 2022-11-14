@@ -26,7 +26,7 @@ device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 wandb.init(project="PNS Denoising",
         config = {
             "learning_rate": 0.01,
-            "epochs": 1,
+            "epochs": 1000,
             "batch_size": 32,
             "kernel_size": 3})
 
@@ -129,6 +129,6 @@ print("Finished!")
 
 # TODO: Folder needs to be created/checked if exists before using torch.save()
 PATH = './saved/coordinate_vae.pth'
-torch.save(model.state_dict(), PATH)
+torch.save(best_model.state_dict(), PATH)
 
 wandb.finish()
