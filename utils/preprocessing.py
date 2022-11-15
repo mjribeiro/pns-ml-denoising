@@ -24,7 +24,27 @@ def extract_window(data, fs=100e3, start=0, win_length=0.008):
     return data[int(start):int(end)]
 
 
-def generate_datasets(data, fs=100e3, num_channels=9, win_length=0.008, flattened=False):
+def generate_bp_windows(bp_data, fs=100e3, win_length=0.008):
+    """
+    Split blood pressure data into list of windows of data
+    """
+    num_windows = int(np.floor(len(bp_data) / (win_length*fs)))
+    vagus_bp_data = np.zeros((num_windows, int(win_length*fs)))
+
+    store_index = 0
+    for search_index in range(0, len(bp_data), int(win_length*fs)):
+        extracted_bp_window =  extract_window(bp_data, fs=fs, start=search_index, win_length=win_length)
+
+        if len(extracted_bp_window) < (int(win_length*fs)):
+                break
+
+        vagus_bp_data[store_index, :] = extracted_bp_window
+        store_index += 1
+
+    return vagus_bp_data
+
+
+def generate_datasets(data, bp_data, fs=100e3, num_channels=9, win_length=0.008):
     """
     Take multiple channel data and return list of windows of data
     """
@@ -32,14 +52,15 @@ def generate_datasets(data, fs=100e3, num_channels=9, win_length=0.008, flattene
 
     num_windows = int(np.floor(len(data["Channel 1"]) / (win_length*fs)))
 
-    if flattened:
-        vagus_data_raw       = np.zeros((num_windows * num_channels, int(win_length*fs)))
-        vagus_data_bp_wide   = np.zeros((num_windows * num_channels, int(win_length*fs)))
-        vagus_data_bp_narrow = np.zeros((num_windows * num_channels, int(win_length*fs)))
-    else:
-        vagus_data_raw       = np.zeros((num_windows, num_channels, int(win_length*fs)))
-        vagus_data_bp_wide   = np.zeros((num_windows, num_channels, int(win_length*fs)))
-        vagus_data_bp_narrow = np.zeros((num_windows, num_channels, int(win_length*fs)))
+    print("Extracting blood pressure windows...")
+    vagus_bp_data = generate_bp_windows(bp_data=bp_data,
+                                        fs=fs,
+                                        win_length=win_length)
+    
+    print("Extracting ENG windows...")
+    vagus_data_raw       = np.zeros((num_windows, num_channels, int(win_length*fs)))
+    vagus_data_bp_wide   = np.zeros((num_windows, num_channels, int(win_length*fs)))
+    vagus_data_bp_narrow = np.zeros((num_windows, num_channels, int(win_length*fs)))
 
 
     for column, ch in zip(all_columns[1:], range(len(all_columns[1:]))):
@@ -65,16 +86,15 @@ def generate_datasets(data, fs=100e3, num_channels=9, win_length=0.008, flattene
             if len(extracted_win_raw) < (int(win_length*fs)):
                 break
             
-            if flattened:
-                vagus_data_raw[store_index]       = extracted_win_raw.flatten()
-                vagus_data_bp_wide[store_index]   = extracted_win_wide_filt.flatten()
-                vagus_data_bp_narrow[store_index] = extracted_win_narrow_filt.flatten()
-            else:
-                vagus_data_raw[store_index, ch, :]       = extracted_win_raw.flatten()
-                vagus_data_bp_wide[store_index, ch, :]   = extracted_win_wide_filt.flatten()
-                vagus_data_bp_narrow[store_index, ch, :] = extracted_win_narrow_filt.flatten()
+            vagus_data_raw[store_index, ch, :]       = extracted_win_raw.flatten()
+            vagus_data_bp_wide[store_index, ch, :]   = extracted_win_wide_filt.flatten()
+            vagus_data_bp_narrow[store_index, ch, :] = extracted_win_narrow_filt.flatten()
 
             store_index += 1
+
+    print("Combining blood pressure and ENG data into one dataset...")
+    # TODO: Find way of appending BP data to existing numpy array (new dimension?)
+
 
     return vagus_data_raw, vagus_data_bp_wide, vagus_data_bp_narrow
 
@@ -84,6 +104,7 @@ def minmax_scaling(data):
     Scales data to [-1, 1]
     """
     return 2 * (data - np.min(data)) / (np.max(data) - np.min(data)) - 1
+
 
 def remove_artefacts(data):
     """

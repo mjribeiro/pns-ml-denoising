@@ -15,9 +15,11 @@ from utils.preprocessing import *
 # TODO: Add automated/scripted way of copying this over
 file_path = './data/Metcalfe-2014/baselineFast.mat'
 
-recording = mat73.loadmat(file_path)
-recording = recording['rawdata']
-recording_df = pd.DataFrame(recording, columns=["Time", "Channel 1", "Channel 2", "Channel 3", 
+print("Loading recordings...")
+recording      = mat73.loadmat(file_path)
+eng_data       = recording['rawdata']
+blood_pressure = recording['bloodPressure']
+eng_data_df    = pd.DataFrame(eng_data, columns=["Time", "Channel 1", "Channel 2", "Channel 3", 
                                                 "Channel 4", "Channel 5", "Channel 6", "Channel 7",
                                                 "Channel 8", "Channel 9"])
 
@@ -26,31 +28,30 @@ recording_df = pd.DataFrame(recording, columns=["Time", "Channel 1", "Channel 2"
 
 # ----- PLOT SAMPLE OF ALL CHANNELS (STACKED)
 # plot_all_channels(recording_df, filt=False, fs=100e3, lims=np.asarray([0, 2]))
-win_length = 0.08192
+win_length = 0.01024
 fs = 100e3
 
 # ----- SORT ALL CHANNEL DATA INTO ONE DATASET
-vagus_data_raw, vagus_data_bp_wide, vagus_data_bp_narrow = generate_datasets(recording_df, 
+print("Creating datasets...")
+vagus_data_raw, vagus_data_bp_wide, vagus_data_bp_narrow = generate_datasets(eng_data_df,
+                                                                             bp_data=blood_pressure,
                                                                              fs=fs, 
                                                                              num_channels=9, 
-                                                                             win_length=win_length,
-                                                                             flattened=False)
-plt.plot(vagus_data_raw[10, 0, :])
-plt.plot(vagus_data_bp_wide[10, 0, :])
-plt.plot(vagus_data_bp_narrow[10, 0, :])
-plt.show()
+                                                                             win_length=win_length)
 
-# ----- SAVE DATASET TO BE USED IN ML
-vagus_train_raw, vagus_test_raw             = train_test_split(vagus_data_raw, test_size=0.2, random_state=1)
-vagus_train_bp_wide, vagus_test_bp_wide     = train_test_split(vagus_data_bp_wide, test_size=0.2, random_state=1)
-vagus_train_bp_narrow, vagus_test_bp_narrow = train_test_split(vagus_data_bp_narrow, test_size=0.2, random_state=1)
+print("")
+# # ----- SAVE DATASET TO BE USED IN ML
+# vagus_train_raw, vagus_test_raw             = train_test_split(vagus_data_raw, test_size=0.2, random_state=1)
+# vagus_train_bp_wide, vagus_test_bp_wide     = train_test_split(vagus_data_bp_wide, test_size=0.2, random_state=1)
+# vagus_train_bp_narrow, vagus_test_bp_narrow = train_test_split(vagus_data_bp_narrow, test_size=0.2, random_state=1)
 
-# Save as numpy arrays?
-np.save(f'./data/Metcalfe-2014/vagus_train_raw_{int(win_length*fs)}.npy', vagus_train_raw)
-np.save(f'./data/Metcalfe-2014/vagus_test_raw_{int(win_length*fs)}.npy', vagus_test_raw)
+# print("Saving datasets...")
+# # Save as numpy arrays?
+# np.save(f'./data/Metcalfe-2014/vagus_train_raw_{int(win_length*fs)}.npy', vagus_train_raw)
+# np.save(f'./data/Metcalfe-2014/vagus_test_raw_{int(win_length*fs)}.npy', vagus_test_raw)
 
-np.save(f'./data/Metcalfe-2014/vagus_train_bp_wide_{int(win_length*fs)}.npy', vagus_train_bp_wide)
-np.save(f'./data/Metcalfe-2014/vagus_test_bp_wide_{int(win_length*fs)}.npy', vagus_test_bp_wide)
+# np.save(f'./data/Metcalfe-2014/vagus_train_bp_wide_{int(win_length*fs)}.npy', vagus_train_bp_wide)
+# np.save(f'./data/Metcalfe-2014/vagus_test_bp_wide_{int(win_length*fs)}.npy', vagus_test_bp_wide)
 
-np.save(f'./data/Metcalfe-2014/vagus_train_bp_narrow_{int(win_length*fs)}.npy', vagus_train_bp_narrow)
-np.save(f'./data/Metcalfe-2014/vagus_test_bp_narrow_{int(win_length*fs)}.npy', vagus_test_bp_narrow)
+# np.save(f'./data/Metcalfe-2014/vagus_train_bp_narrow_{int(win_length*fs)}.npy', vagus_train_bp_narrow)
+# np.save(f'./data/Metcalfe-2014/vagus_test_bp_narrow_{int(win_length*fs)}.npy', vagus_test_bp_narrow)

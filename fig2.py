@@ -13,7 +13,7 @@ train_dataset = VagusDataset(train=True)
 test_dataset  = VagusDataset(train=False)
 
 # Load arterial blood pressure data
-# TODO: Ask Ben about gains and whether any filtering was done
+file_path = 'data/Metcalfe-2014/'
 ecg_record = wfdb.rdrecord('data/Metcalfe-2014/ECG', sampfrom=0, sampto=20*(100000))
 ecg_signal = ecg_record.p_signal
 
