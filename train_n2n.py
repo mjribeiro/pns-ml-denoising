@@ -26,7 +26,7 @@ device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 wandb.init(project="PNS Denoising",
         config = {
             "learning_rate": 0.0001,
-            "epochs": 10,
+            "epochs": 50,
             "batch_size": 32,
             "kernel_size": 3})
 
@@ -53,7 +53,7 @@ decoder = Noise2NoiseDecoder(num_channels=sample.shape[0], data_length=len(sampl
 model = Noise2NoiseModel(encoder=encoder, decoder=decoder).to(device)
 
 # Hyperparameter setup
-mse_loss = nn.L1Loss()
+mse_loss = nn.MSELoss()
 
 def loss_function(x, x_hat):
     return mse_loss(x, x_hat)

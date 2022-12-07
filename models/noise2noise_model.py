@@ -13,10 +13,10 @@ class Noise2NoiseEncoder(nn.Module):
         self.num_layers = num_layers
         self.layers = nn.ModuleList()
 
-        in_channels = [num_channels, 48, 48, 48, 48, 48, 48]
-        out_channels = [48, 48, 48, 48, 48, 48, 48]
-        # in_channels = [num_channels, 16, 16, 16, 16, 16, 16]
-        # out_channels = [16, 16, 16, 16, 16, 16, 16]
+        # in_channels = [num_channels, 48, 48, 48, 48, 48, 48]
+        # out_channels = [48, 48, 48, 48, 48, 48, 48]
+        in_channels = [num_channels, 8, 8, 8, 8, 8, 8]
+        out_channels = [8, 8, 8, 8, 8, 8, 8]
         
         for i in range(num_layers):
             self.layers.append(nn.Conv1d(in_channels=in_channels[i], 
@@ -51,10 +51,10 @@ class Noise2NoiseDecoder(nn.Module):
         self.num_layers = num_layers
         self.layers = nn.ModuleList()
 
-        in_channels = [96, 96, 144, 96, 144, 96, 144, 96, 96+num_channels, 64, 32]
-        out_channels = [96, 96, 96, 96, 96, 96, 96, 96, 64, 32, num_channels]
-        # in_channels = [16, 16, 32, 16, 32, 16, 32, 16, 16+num_channels, 64, 32]
-        # out_channels = [16, 16, 16, 16, 16, 16, 16, 16, 64, 32, num_channels]
+        # in_channels = [96, 96, 144, 96, 144, 96, 144, 96, 96+num_channels, 64, 32]
+        # out_channels = [96, 96, 96, 96, 96, 96, 96, 96, 64, 32, num_channels]
+        in_channels = [16, 16, 24, 16, 24, 16, 24, 16, 16+num_channels, 32, 16]
+        out_channels = [16, 16, 16, 16, 16, 16, 16, 16, 32, 16, num_channels]
 
         for i in range(0, num_layers):
             self.layers.append(nn.Conv1d(in_channels=in_channels[i], 
