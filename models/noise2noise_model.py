@@ -68,15 +68,21 @@ class Noise2NoiseDecoder(nn.Module):
         self.tanh = nn.Tanh()
 
     def forward(self, x, encodings):
-        # Reverse encodings list, later encoding layers go in first
+        # Reverse encodings list, later encoding layers get concatenated first
         encodings = list(reversed(encodings))
 
         h = x
-        for layer_idx in range(0, self.num_layers-1, 2):
-            h   = self.upsample(h)
-            h   = torch.cat([h, encodings[int(layer_idx/2)]], dim=1)
-            h   = self.leaky_relu(self.layers[layer_idx](h))
-            h   = self.leaky_relu(self.layers[layer_idx + 1](h))
+        for layer_idx in range(0, self.num_layers-1):
+            if layer_idx % 2 == 0:
+                # Concatenate encodings to even-index hidden layers
+                h   = self.upsample(h)
+                h   = torch.cat([h, encodings[int(layer_idx/2)]], dim=1)
+                h   = self.leaky_relu(self.layers[layer_idx](h))
+            else:
+                # Do conv1d+leakyrelu for the remainder
+                h   = self.leaky_relu(self.layers[layer_idx](h)) 
+
+
         return self.tanh(self.layers[-1](h))
 
 
