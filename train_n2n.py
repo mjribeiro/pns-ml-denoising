@@ -26,7 +26,7 @@ device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 wandb.init(project="PNS Denoising",
         config = {
             "learning_rate": 0.0001,
-            "epochs": 1,
+            "epochs": 10,
             "batch_size": 32,
             "kernel_size": 3})
 

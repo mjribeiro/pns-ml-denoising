@@ -19,7 +19,7 @@ class VagusDataset(torch.utils.data.Dataset):
 
     
     def _load_data(self):
-        data_file = f"vagus_{'train' if self.train else 'test'}_bp_narrow.npy"
+        data_file = f"vagus_{'train' if self.train else 'test'}_bp_narrow_1024.npy"
         data = np.load(f"./data/Metcalfe-2014/{data_file}")
 
         return data
@@ -41,14 +41,14 @@ class VagusDatasetN2N(torch.utils.data.Dataset):
 
     
     def _load_data(self):
-        data_file = f"vagus_{'train' if self.train else 'test'}_raw.npy"
+        data_file = f"vagus_{'train' if self.train else 'test'}_raw_1024.npy"
         data = np.load(f"./data/Metcalfe-2014/{data_file}")
 
         return data
 
 
     def _load_targets(self):
-        targets_file = f"vagus_{'train' if self.train else 'test'}_bp_narrow.npy"
+        targets_file = f"vagus_{'train' if self.train else 'test'}_bp_narrow_1024.npy"
         targets = np.load(f"./data/Metcalfe-2014/{targets_file}")
         
         return targets

@@ -48,8 +48,6 @@ with torch.no_grad():
     for batch_idx, (inputs, targets) in enumerate(test_dataloader):
         inputs = inputs.to(device).float()
         targets = targets.to(device).float()
-
-        model.training = False
         
         x_hat = model(inputs)
         x_hat = x_hat.cpu().numpy()
@@ -59,8 +57,9 @@ with torch.no_grad():
         xs_cleaner[batch_idx, :, :] = targets[0].cpu().numpy()
 
 # x = x.view(16, 1, input_dim)
-for i in range(9):
-    plt.plot(xs[:, i, :].flatten(), label=f"Noisy input {i}")
-    plt.plot(xs_cleaner[:, i, :].flatten(), label=f"Noisy labels {i}")
-    plt.plot(x_hats[:, i, :].flatten(), label=f"Reconstructed {i}")
+# for i in range(9):
+plt.plot(xs[:, 0, :].flatten(), label=f"Noisy input")
+# plt.plot(xs_cleaner[:, 0, :].flatten(), label=f"Noisy labels {i}")
+plt.plot(x_hats[:, 0, :].flatten(), label=f"Reconstructed")
+plt.legend()
 plt.show()

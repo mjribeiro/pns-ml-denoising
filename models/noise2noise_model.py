@@ -15,6 +15,8 @@ class Noise2NoiseEncoder(nn.Module):
 
         in_channels = [num_channels, 48, 48, 48, 48, 48, 48]
         out_channels = [48, 48, 48, 48, 48, 48, 48]
+        # in_channels = [num_channels, 16, 16, 16, 16, 16, 16]
+        # out_channels = [16, 16, 16, 16, 16, 16, 16]
         
         for i in range(num_layers):
             self.layers.append(nn.Conv1d(in_channels=in_channels[i], 
@@ -29,20 +31,16 @@ class Noise2NoiseEncoder(nn.Module):
     def forward(self, x):
         encodings = [x]
 
-        # Layer 1, just conv_lr
+        # Layer 0, just conv_lr
         h_ = self.leaky_relu(self.layers[0](x))
 
-        # Layer 2, conv_lr and maxpool
-        encodings.append(self.maxpool(self.leaky_relu(self.layers[1](h_))))
+        # Layers 1-5, conv_lr and maxpool
+        for layer_idx in range(1, self.num_layers-1):
+            h_ = self.maxpool(self.leaky_relu(self.layers[layer_idx](h_)))
+            if layer_idx < 5:
+                encodings.append(h_)
 
-        # Layers 3-5, conv_lr and maxpool
-        for layer_idx in range(2, self.num_layers-2):
-            encodings.append(self.maxpool(self.leaky_relu(self.layers[layer_idx](encodings[-1]))))
-
-        # Layer 6, conv_lr and maxpool
-        h_ = self.maxpool(self.leaky_relu(self.layers[-2](encodings[-1])))
-
-        # Layer 7, conv_lr only
+        # Layer 6, conv_lr only
         return self.leaky_relu(self.layers[-1](h_)), encodings
 
 
@@ -55,6 +53,8 @@ class Noise2NoiseDecoder(nn.Module):
 
         in_channels = [96, 96, 144, 96, 144, 96, 144, 96, 96+num_channels, 64, 32]
         out_channels = [96, 96, 96, 96, 96, 96, 96, 96, 64, 32, num_channels]
+        # in_channels = [16, 16, 32, 16, 32, 16, 32, 16, 16+num_channels, 64, 32]
+        # out_channels = [16, 16, 16, 16, 16, 16, 16, 16, 64, 32, num_channels]
 
         for i in range(0, num_layers):
             self.layers.append(nn.Conv1d(in_channels=in_channels[i], 
