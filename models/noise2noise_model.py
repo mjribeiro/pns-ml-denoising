@@ -37,7 +37,7 @@ class Noise2NoiseEncoder(nn.Module):
         # Layers 1-5, conv_lr and maxpool
         for layer_idx in range(1, self.num_layers-1):
             h_ = self.maxpool(self.leaky_relu(self.layers[layer_idx](h_)))
-            if layer_idx < 5:
+            if layer_idx < (self.num_layers-2):
                 encodings.append(h_)
 
         # Layer 6, conv_lr only
