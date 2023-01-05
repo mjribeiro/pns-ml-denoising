@@ -91,23 +91,26 @@ class Encoder(nn.Module):
 
         self.device = device
 
-        self.input_dim = input_dim
-        self.latent_dim = latent_dim
-        self.pool_step = pool_step
-        self.num_layers = num_layers
-        self.layers = nn.ModuleList()
+        self.input_dim   = input_dim
+        self.latent_dim  = latent_dim
+        self.pool_step   = pool_step
+        self.num_layers  = num_layers
+        self.layers      = nn.ModuleList()
 
         # WIP
-        in_channels = [input_dim, 64, 128, 256, 256, 512, 512]
-        out_channels = in_channels[1:num_layers]
-        out_channels.append(latent_dim)
-        
-        for i in range(self.num_layers):
-            self.layers.append(nn.Conv1d(in_channels=in_channels[i], 
-                                         out_channels=out_channels[i], 
+        for i in range(self.num_layers-1):
+            self.layers.append(nn.Conv1d(in_channels=input_dim * (2 ** i), 
+                                         out_channels=input_dim * (2 ** (i + 1)), 
                                          kernel_size=kernel_size, 
                                          padding=math.floor(kernel_size/2), 
                                          stride=1))
+
+        # Final convolutional layer feeding into latent space
+        self.layers.append(nn.Conv1d(in_channels=input_dim * (2 ** (i + 1)), 
+                                     out_channels=latent_dim, 
+                                     kernel_size=kernel_size, 
+                                     padding=math.floor(kernel_size/2), 
+                                     stride=1))
 
         self.maxpool    = nn.MaxPool1d(kernel_size=self.pool_step, stride=self.pool_step, return_indices=True)
         self.leaky_relu = nn.LeakyReLU()
@@ -118,10 +121,14 @@ class Encoder(nn.Module):
         h_ = x
         maxpool_indices = []
         for layer in self.layers:
-            h_, indices   = self.maxpool(layer(h_))
-            h_            = self.dropout(self.leaky_relu(h_))
+            # Check if dimension of data would be reduced to less than the size of convolutional layer
+            if (h_.shape[2] / self.pool_step) < h_.shape[1]:
+                h_ = layer(h_)
+            else:
+                h_, indices   = self.maxpool(layer(h_))
+                maxpool_indices.append(indices)
 
-            maxpool_indices.append(indices)
+            h_            = self.dropout(self.leaky_relu(h_))
 
         return h_, maxpool_indices
 
@@ -134,28 +141,37 @@ class Decoder(nn.Module):
         
         self.latent_dim = latent_dim
         self.output_dim = output_dim
+        self.kernel_size = kernel_size
         self.pool_step = pool_step
         self.num_layers = num_layers
         self.layers = nn.ModuleList()
 
-        in_channels_orig = [latent_dim, 512, 512, 256, 256, 128, 64]
+        # TODO: Write this in a more compact way
+        if pool_step == 8: maxpool_layer_count = 1
+        elif pool_step == 4: maxpool_layer_count = 2
+        elif pool_step == 2: maxpool_layer_count = 3
 
-        in_channels = in_channels_orig[-num_layers+1:]
-        in_channels.insert(0, latent_dim)
-        out_channels = in_channels[1:]
-        out_channels.append(output_dim)
+        for i in range(self.num_layers - maxpool_layer_count):
+            self.layers.append(nn.ConvTranspose1d(in_channels=latent_dim * (2 ** i), 
+                                                  out_channels=latent_dim * (2 ** (i + 1)), 
+                                                  kernel_size=kernel_size,
+                                                  padding=math.floor(kernel_size/2), 
+                                                  stride=1))
+        last_i = i + 1
 
-        for i in range(self.num_layers):
-            self.layers.append(nn.ConvTranspose1d(in_channels=in_channels[i], 
-                                                  out_channels=out_channels[i], 
+        for i in range(maxpool_layer_count-1):
+            self.layers.append(nn.ConvTranspose1d(in_channels=latent_dim * (2 ** last_i), 
+                                                  out_channels=latent_dim * (2 ** (last_i + 1)), 
                                                   kernel_size=self.pool_step,
                                                   padding=0, 
                                                   stride=self.pool_step))
-            # self.layers.append(nn.ConvTranspose1d(in_channels=in_channels[i], 
-            #                              out_channels=out_channels[i], 
-            #                              kernel_size=self.pool_step, 
-            #                              padding=0, 
-            #                              stride=self.pool_step))
+            last_i += 1
+
+        self.layers.append(nn.ConvTranspose1d(in_channels=latent_dim * (2 ** last_i), 
+                                              out_channels=output_dim, 
+                                              kernel_size=self.pool_step,
+                                              padding=0, 
+                                              stride=self.pool_step))
 
         # WIP
         self.maxunpool  = nn.MaxUnpool1d(kernel_size=self.pool_step, stride=self.pool_step)

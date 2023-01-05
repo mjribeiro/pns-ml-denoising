@@ -9,7 +9,7 @@ import torch.nn.functional as F
 import wandb
 
 from pathlib import Path
-from torch.optim import AdamW
+from torch.optim import Adam
 from torch.utils.data import DataLoader
 from torchsummary import summary
 
@@ -55,14 +55,14 @@ print("Setting up coordinate VAE model...")
 encoder = Encoder(input_dim=9, 
                 latent_dim=100, 
                 kernel_size=config.kernel_size, 
-                num_layers=4, 
+                num_layers=8, 
                 pool_step=4, 
                 batch_size=config.batch_size, 
                 device=device)
 decoder = Decoder(latent_dim=100, 
                 output_dim=9, 
                 kernel_size=config.kernel_size, 
-                num_layers=4, 
+                num_layers=8, 
                 pool_step=4, 
                 device=device)
 model = CoordinateVAEModel(encoder=encoder, 
@@ -83,7 +83,7 @@ def loss_function(x, x_hat, kld_weight):
     return MSE + KLD, KLD
 
 
-optimizer = AdamW(model.parameters(), 
+optimizer = Adam(model.parameters(), 
                 lr=config.learning_rate,
                 weight_decay=1e-5)
 wandb.watch(model, log="all")
@@ -141,6 +141,7 @@ torch.save(best_model.state_dict(), './saved/coordinate_vae.pth')
 # ----- INFERENCE -----
 # model.load_state_dict(torch.load('./saved/coordinate_vae.pth'))
 model = best_model
+model.training = False
 
 # Inference
 model.eval()
