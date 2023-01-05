@@ -84,7 +84,7 @@ train_dataloader = DataLoader(x_windows, batch_size=config.batch_size, shuffle=T
 test_dataloader = DataLoader(x_windows, batch_size=1, shuffle=False)
 
 print("Setting up coordinate VAE model...")
-encoder = Encoder(input_dim=samples, 
+encoder = Encoder(input_dim=2, 
                 latent_dim=100, 
                 kernel_size=config.kernel_size, 
                 num_layers=3, 
@@ -92,13 +92,13 @@ encoder = Encoder(input_dim=samples,
                 batch_size=config.batch_size, 
                 device=device)
 decoder = Decoder(latent_dim=100, 
-                output_dim=samples, 
+                output_dim=2, 
                 kernel_size=config.kernel_size, 
                 num_layers=3, 
                 pool_step=4, 
                 device=device)
-model = CoordinateVAEModel(Encoder=encoder, 
-                        Decoder=decoder)
+model = CoordinateVAEModel(encoder=encoder, 
+                           decoder=decoder)
 
 # # -- View model
 # summary(model.to(device), [(2, samples)], 1)
@@ -107,7 +107,7 @@ model = CoordinateVAEModel(Encoder=encoder,
 mse_loss = nn.MSELoss(reduction='mean')
 kld_loss = nn.KLDivLoss()
 
-def loss_function(x, x_hat, q_y, categorical_dim, kld_weight):
+def loss_function(x, x_hat, kld_weight):
 
     MSE = mse_loss(x, x_hat)
     KLD = kld_loss(F.log_softmax(x, -1), F.softmax(x_hat, -1))
@@ -154,8 +154,8 @@ for epoch in range(config.epochs):
         
         optimizer.zero_grad()
 
-        x_hat, q_y, categorical_dim = model(data)
-        loss, kld = loss_function(data, x_hat, q_y, categorical_dim, kld_weight=kld_weight)
+        x_hat = model(data)
+        loss, kld = loss_function(data, x_hat, kld_weight=kld_weight)
 
         if loss < best_loss:
             best_model = copy.deepcopy(model)
@@ -203,7 +203,7 @@ with torch.no_grad():
     # onehots = np.zeros((len(x_windows), int(samples/4)))
     for idx, test_data in enumerate(test_dataloader):
         test_data = test_data.to(device).float()
-        x_hat, q_y, categorical_dim = best_model(test_data)
+        x_hat = best_model(test_data)
 
         # Convert to numpy and send to cpu
         x_hat = x_hat.cpu().numpy()
