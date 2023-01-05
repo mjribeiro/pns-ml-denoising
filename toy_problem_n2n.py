@@ -23,19 +23,19 @@ num_repeats = 1
 
 # x = np.sin(2 * np.pi * f * np.arange(total_samples) / fs)
 x_clean = np.sin(2 * np.pi * f * np.arange(total_samples) / fs)
-x = x_clean + np.random.normal(0, 0.6, total_samples)
-x_cleaner = x_clean + np.random.normal(0, 0.3, total_samples)
+x_noisy = x_clean + np.random.normal(0, 0.6, total_samples)
+x_medium = x_clean + np.random.normal(0, 0.3, total_samples)
 
 # Also normalise clean
-x_clean = 2 * (x_clean - np.min(x_cleaner)) / (np.max(x_cleaner) - np.min(x_cleaner)) - 1
+x_clean = 2 * (x_clean - np.min(x_medium)) / (np.max(x_medium) - np.min(x_medium)) - 1
 # Normalise to [-1, 1]
-x = 2 * (x - np.min(x)) / (np.max(x) - np.min(x)) - 1
-x_cleaner = 2 * (x_cleaner - np.min(x_cleaner)) / (np.max(x_cleaner) - np.min(x_cleaner)) - 1
+x_noisy = 2 * (x_noisy - np.min(x_noisy)) / (np.max(x_noisy) - np.min(x_noisy)) - 1
+x_medium = 2 * (x_medium - np.min(x_medium)) / (np.max(x_medium) - np.min(x_medium)) - 1
 
 
 x_windows = []
-for i in range(0, len(x) - samples, samples):
-    x_windows.append((x[i:i+samples], x_cleaner[i:i+samples]))
+for i in range(0, len(x_noisy) - samples, samples):
+    x_windows.append((x_noisy[i:i+samples], x_medium[i:i+samples]))
 # x_windows = np.asarray(x_windows)
 
 # --- Set up model
@@ -46,7 +46,7 @@ device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 wandb.init(project="PNS Denoising",
            config = {
               "learning_rate": 0.001,
-              "epochs": 2,
+              "epochs": 20,
               "batch_size": 32,
               "kernel_size": 3})
 
@@ -59,7 +59,7 @@ test_dataloader = DataLoader(x_windows, batch_size=1, shuffle=False)
 print("Setting up Noise2Noise model...")
 
 encoder = Noise2NoiseEncoder(num_channels=1)
-decoder = Noise2NoiseDecoder(num_channels=1, data_length=len(x))
+decoder = Noise2NoiseDecoder(num_channels=1, data_length=len(x_noisy))
 model = Noise2NoiseModel(encoder=encoder, decoder=decoder).to(device)
 
 # summary(model, [(1, samples)])
@@ -141,7 +141,7 @@ with torch.no_grad():
 plt.plot(x_windows[0][0], label="Noisy input")
 plt.plot(x_windows[0][1], label="Less noisy input")
 plt.plot(x_clean[0:2048], label="Clean sine wave")
-# plt.plot(x_cleaner.detach().cpu(), label="Noisy target")
+# plt.plot(x_medium.detach().cpu(), label="Noisy target")
 plt.plot(x_hats.flatten()[0:2048], label="Reconstruction")
 plt.legend()
 plt.show()
