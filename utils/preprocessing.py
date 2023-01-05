@@ -133,7 +133,21 @@ def plot_all_channels(data, filt=False, fs=100e3, lims=np.asarray([0.649, 0.656]
     fig.update_layout(
         title="Pig vagus spontaneous activity: all channels",
         xaxis_title="Time (s)",
-        yaxis_title="Voltage (V)"
+        yaxis_title="Voltage (V)",
+        font=dict(
+            size=32,
+        ),
+        plot_bgcolor='white'
+    )
+    fig.update_xaxes(
+        showline=True,
+        linecolor='black',
+        gridcolor='lightgrey'
+    )
+    fig.update_yaxes(
+        showline=True,
+        linecolor='black',
+        gridcolor='lightgrey'
     )
 
     all_columns = data.columns
