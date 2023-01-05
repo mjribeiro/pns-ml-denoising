@@ -17,7 +17,7 @@ from torchsummary import summary
 import matplotlib.pyplot as plt
 
 # Local imports
-from models.vae_model import *
+from models.cvae_model import *
 from datasets.vagus_dataset import VagusDataset
 
 # Address GPU memory issues (source: https://stackoverflow.com/a/66921450)

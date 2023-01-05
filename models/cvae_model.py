@@ -47,12 +47,41 @@ def gumbel_softmax(latent_dim, categorical_dim, logits, temperature, hard=False)
 
 # Based on: https://github.com/Jackson-Kang/Pytorch-VAE-tutorial/blob/master/01_Variational_AutoEncoder.ipynb
 class CoordinateEncoder(nn.Module):
-    def __init__(self):
+    def __init__(self, input_dim, conv_out_dim, output_dim, kernel_size, num_layers, pool_step, device):
         super(CoordinateEncoder, self).__init__()
+
+        self.device = device
+
+        self.input_dim = input_dim
+        self.output_dim = output_dim
+        self.pool_step = pool_step
+        self.num_layers = num_layers
+        self.layers = nn.ModuleList()
+
+        in_channels = [input_dim, 32, 64]
+        out_channels = [32, 64, conv_out_dim]
+
+        for i in range(self.num_layers):
+            self.layers.append(nn.Conv1d(in_channels=in_channels[i], 
+                                         out_channels=out_channels[i], 
+                                         kernel_size=kernel_size, 
+                                         padding=math.floor(kernel_size/2), 
+                                         stride=1))
+
+        self.maxpool    = nn.MaxPool1d(kernel_size=self.pool_step, stride=self.pool_step)
+        self.leaky_relu = nn.LeakyReLU()
+        self.dropout    = nn.Dropout(0.05)
+        self.fcn        = nn.Linear(conv_out_dim, output_dim)
 
 
     def forward(self, x):
-        pass
+        h_ = x
+
+        for layer in self.layers:
+            h_   = self.dropout(self.leaky_relu(self.maxpool(layer(h_))))
+
+        # Add final dense layer
+        return self.fcn(h_)
 
 
 class Encoder(nn.Module):
@@ -69,7 +98,7 @@ class Encoder(nn.Module):
         self.layers = nn.ModuleList()
 
         # WIP
-        in_channels = [9, 64, 128, 256, 256, 512, 512]
+        in_channels = [input_dim, 64, 128, 256, 256, 512, 512]
         out_channels = in_channels[1:num_layers]
         out_channels.append(latent_dim)
         
@@ -80,22 +109,21 @@ class Encoder(nn.Module):
                                          padding=math.floor(kernel_size/2), 
                                          stride=1))
 
-        self.maxpool    = nn.MaxPool1d(kernel_size=self.pool_step, stride=self.pool_step)
+        self.maxpool    = nn.MaxPool1d(kernel_size=self.pool_step, stride=self.pool_step, return_indices=True)
         self.leaky_relu = nn.LeakyReLU()
         self.dropout    = nn.Dropout(0.05)
 
     
     def forward(self, x):
         h_ = x
+        maxpool_indices = []
         for layer in self.layers:
-            h_   = self.dropout(self.leaky_relu(self.maxpool(layer(h_))))
+            h_, indices   = self.maxpool(layer(h_))
+            h_            = self.dropout(self.leaky_relu(h_))
 
-        q = h_.view(h_.shape[0], self.latent_dim*h_.shape[2])
+            maxpool_indices.append(indices)
 
-        # I think this sort of "flattening" helps a bit with the onehot?
-        # h_ = h_.view(h_.shape[0], latent_size * data_length)
-        # return q, h_, self.latent_dim, h_.shape[2]
-        return h_
+        return h_, maxpool_indices
 
 
 class Decoder(nn.Module):
@@ -115,7 +143,7 @@ class Decoder(nn.Module):
         in_channels = in_channels_orig[-num_layers+1:]
         in_channels.insert(0, latent_dim)
         out_channels = in_channels[1:]
-        out_channels.append(9)
+        out_channels.append(output_dim)
 
         for i in range(self.num_layers):
             self.layers.append(nn.ConvTranspose1d(in_channels=in_channels[i], 
@@ -123,7 +151,14 @@ class Decoder(nn.Module):
                                                   kernel_size=self.pool_step,
                                                   padding=0, 
                                                   stride=self.pool_step))
+            # self.layers.append(nn.ConvTranspose1d(in_channels=in_channels[i], 
+            #                              out_channels=out_channels[i], 
+            #                              kernel_size=self.pool_step, 
+            #                              padding=0, 
+            #                              stride=self.pool_step))
 
+        # WIP
+        self.maxunpool  = nn.MaxUnpool1d(kernel_size=self.pool_step, stride=self.pool_step)
         self.dropout    = nn.Dropout(0.05)
         self.leaky_relu = nn.LeakyReLU()
         self.tanh       = nn.Tanh()
@@ -132,26 +167,23 @@ class Decoder(nn.Module):
         # self.fc_up = nn.Linear(latent_dim, int(output_dim/(2**num_layers))*latent_dim)
         
 
-    def forward(self, x):
+    def forward(self, x, maxpool_indices):
         h = x
-        
-        # FC layer to get original downsampled dims
-        # h = self.fc_up(h)
-
-        # Reshape for conv1d
-        # h = h.reshape(-1, self.latent_dim, int(self.output_dim/(2**self.num_layers)))
+        maxpool_indices = list(reversed(maxpool_indices))
 
         for layer_idx in range(self.num_layers-1):
             h   = self.leaky_relu(self.dropout(self.layers[layer_idx](h)))
+            # h = self.leaky_relu(self.dropout(self.layers[layer_idx](self.maxunpool(h, maxpool_indices[layer_idx]))))
         return self.tanh(self.dropout(self.layers[-1](h)))
     
 
 class CoordinateVAEModel(nn.Module):
-    def __init__(self, Encoder, Decoder):
+    def __init__(self, encoder, decoder):
         super(CoordinateVAEModel, self).__init__()
         # self.CoordinateEncoder = CoordinateEncoder
-        self.Encoder = Encoder
-        self.Decoder = Decoder
+        self.encoder = encoder
+        self.decoder = decoder
+        # self.coordinate_encoder = coordinate_encoder
 
         self.N = torch.distributions.Normal(0, 1)
         self.N.loc = self.N.loc.cuda() # hack to get sampling on the GPU
@@ -160,17 +192,12 @@ class CoordinateVAEModel(nn.Module):
         self.epoch = 0
         self.tau = 0.1
         self.training = True
-
-
-    # Source: https://medium.com/dataseries/variational-autoencoder-with-pytorch-2d359cbf027b
-    def sampler(self, mu, logvar):
-        sigma = torch.exp(logvar)
-        return mu + sigma * self.N.sample(mu.shape)
     
     
     def forward(self, x):
         # Get logits from encoder
-        q_y = self.Encoder(x)
+        q_y, maxpool_indices = self.encoder(x)
+        # coord_encoding = self.coordinate_encoder
 
         # Gumbel-Softmax activation on the latent space
         self.tau = 2*math.exp(-0.0003*self.epoch)
@@ -184,4 +211,4 @@ class CoordinateVAEModel(nn.Module):
         
         # Get output from decoder
         # return self.Decoder(z), F.softmax(q_y, dim=-1).reshape(*q.size()), categorical_dim
-        return self.Decoder(z)
+        return self.decoder(z, maxpool_indices)

@@ -12,7 +12,7 @@ from torch.utils.data import DataLoader
 from torchsummary import summary
 
 # Local imports
-from models.vae_model import *
+from models.cvae_model import *
 
 # --- Create sine wave
 fs = 30000
