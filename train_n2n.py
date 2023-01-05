@@ -93,7 +93,6 @@ for epoch in range(config.epochs):
         
 print("Finished!")
 
-# TODO: Folder needs to be created/checked if exists before using torch.save()
 Path('./saved/').mkdir(parents=True, exist_ok=True)
 torch.save(best_model.state_dict(), './saved/noise2noise.pth')
 
