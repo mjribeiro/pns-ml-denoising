@@ -42,7 +42,7 @@ train_dataset = VagusDataset(train=True)
 test_dataset  = VagusDataset(train=False)
 
 train_dataloader = DataLoader(train_dataset, batch_size=config.batch_size, shuffle=True, drop_last=True)
-test_dataloader = DataLoader(test_dataset, batch_size=config.batch_size, shuffle=True, drop_last=True)
+test_dataloader = DataLoader(test_dataset, batch_size=config.batch_size, shuffle=False, drop_last=True)
 
 # sample = train_dataset.__getitem__(0)
 
