@@ -1,5 +1,6 @@
 import numpy as np
 import plotly.graph_objects as go
+import random
 
 from sklearn.preprocessing import StandardScaler
 from scipy import signal
@@ -58,9 +59,9 @@ def generate_datasets(data, bp_data, fs=100e3, num_channels=9, win_length=0.008)
                                         win_length=win_length)
     
     print("Extracting ENG windows...")
-    vagus_data_raw       = np.zeros((num_windows, num_channels, int(win_length*fs)))
-    vagus_data_bp_wide   = np.zeros((num_windows, num_channels, int(win_length*fs)))
-    vagus_data_bp_narrow = np.zeros((num_windows, num_channels, int(win_length*fs)))
+    vagus_data_raw         = np.zeros((num_windows, num_channels, int(win_length*fs), 2))
+    vagus_data_filt_wide   = np.zeros((num_windows, num_channels, int(win_length*fs), 2))
+    vagus_data_filt_narrow = np.zeros((num_windows, num_channels, int(win_length*fs), 2))
 
 
     for column, ch in zip(all_columns[1:], range(len(all_columns[1:]))):
@@ -75,7 +76,7 @@ def generate_datasets(data, bp_data, fs=100e3, num_channels=9, win_length=0.008)
         # Remove artefacts and rescale to [-1, 1]
         channel_data = minmax_scaling(remove_artefacts(channel_data))
         channel_data_wide_filt = bandpass_filter(channel_data, freqs=[50, 49.9e3])
-        channel_data_narrow_filt = bandpass_filter(channel_data, freqs=[100, 10e3])
+        channel_data_narrow_filt = bandpass_filter(channel_data, freqs=[100, 5e3])
 
         for search_index in range(0, len(channel_data), int(win_length*fs)):
 
@@ -86,17 +87,15 @@ def generate_datasets(data, bp_data, fs=100e3, num_channels=9, win_length=0.008)
             if len(extracted_win_raw) < (int(win_length*fs)):
                 break
             
-            vagus_data_raw[store_index, ch, :]       = extracted_win_raw.flatten()
-            vagus_data_bp_wide[store_index, ch, :]   = extracted_win_wide_filt.flatten()
-            vagus_data_bp_narrow[store_index, ch, :] = extracted_win_narrow_filt.flatten()
+            vagus_data_raw[store_index, ch, :, :]         = np.asarray([extracted_win_raw.flatten(), vagus_bp_data[store_index, :]]).T
+            vagus_data_filt_wide[store_index, ch, :, :]   = np.asarray([extracted_win_wide_filt.flatten(), vagus_bp_data[store_index, :]]).T
+            vagus_data_filt_narrow[store_index, ch, :, :] = np.asarray([extracted_win_narrow_filt.flatten(), vagus_bp_data[store_index, :]]).T
 
             store_index += 1
 
-    print("Combining blood pressure and ENG data into one dataset...")
-    # TODO: Find way of appending BP data to existing numpy array (new dimension?)
+    print("Concatenated ENG and blood pressure data into one dataset...")
 
-
-    return vagus_data_raw, vagus_data_bp_wide, vagus_data_bp_narrow
+    return vagus_data_raw, vagus_data_filt_wide, vagus_data_filt_narrow
 
  
 def minmax_scaling(data):
@@ -104,6 +103,44 @@ def minmax_scaling(data):
     Scales data to [-1, 1]
     """
     return 2 * (data - np.min(data)) / (np.max(data) - np.min(data)) - 1
+
+
+def prepare_n2n_data(noisy_inputs, filtered_data, num_chs=9, data_len=1024):
+    """
+    Take noisy and filtered data and prepare to feed into Noise2Noise model.
+    Needs independent noisy pairs to begin with, then more can be generated
+    """
+    # Add GWN to filtered data
+    noisy_targets = np.zeros_like(filtered_data)
+
+    for data_idx in range(len(filtered_data)):
+        for ch in range(num_chs):
+            data = filtered_data[data_idx, ch, :]
+            noisy_targets[data_idx, ch, :] = data + np.random.normal(0, 0.1, len(data))
+    
+    # Create new input and target variables with point swaps
+    noisy_inputs_arr  = np.zeros((len(noisy_inputs) * 2, num_chs, data_len))
+    noisy_targets_arr = np.zeros((len(noisy_targets) * 2, num_chs, data_len))
+
+    # Store original inputs/targets
+    noisy_inputs_arr[:len(noisy_inputs)] = noisy_inputs
+    noisy_targets_arr[:len(noisy_targets)] = noisy_targets
+
+    for input, target, idx in zip(noisy_inputs, noisy_targets, range(len(noisy_inputs), len(noisy_inputs) * 2)):
+        # Pick arbitrary index for points to swap
+        rand_idx = random.randrange(len(input[ch, :]))
+        
+        for ch in range(num_chs):
+            # Swap at specific index
+            input[ch, rand_idx], target[ch, rand_idx] = target[ch, rand_idx], input[ch, rand_idx]
+
+            # Store in relevant arrays
+            noisy_inputs_arr[idx, ch, :] = input[ch, rand_idx]
+            noisy_targets_arr[idx, ch, :] = target[ch, rand_idx]
+
+    # TODO: Double amount of data by showing targets as inputs and inputs as targets too
+
+    return noisy_inputs_arr, noisy_targets_arr
 
 
 def remove_artefacts(data):

@@ -52,11 +52,11 @@ class CoordinateEncoder(nn.Module):
 
         self.device = device
 
-        self.input_dim = input_dim
-        self.output_dim = output_dim
-        self.pool_step = pool_step
-        self.num_layers = num_layers
-        self.layers = nn.ModuleList()
+        self.input_dim   = input_dim
+        self.output_dim  = output_dim
+        self.pool_step   = pool_step
+        self.num_layers  = num_layers
+        self.layers      = nn.ModuleList()
 
         in_channels = [input_dim, 32, 64]
         out_channels = [32, 64, conv_out_dim]

@@ -41,8 +41,8 @@ config = wandb.config
 train_dataset = VagusDataset(train=True)
 test_dataset  = VagusDataset(train=False)
 
-train_dataloader = DataLoader(train_dataset, batch_size=config.batch_size, shuffle=True)
-test_dataloader = DataLoader(test_dataset, batch_size=config.batch_size, shuffle=True)
+train_dataloader = DataLoader(train_dataset, batch_size=config.batch_size, shuffle=True, drop_last=True)
+test_dataloader = DataLoader(test_dataset, batch_size=config.batch_size, shuffle=True, drop_last=True)
 
 # sample = train_dataset.__getitem__(0)
 
@@ -55,14 +55,14 @@ print("Setting up coordinate VAE model...")
 encoder = Encoder(input_dim=9, 
                 latent_dim=100, 
                 kernel_size=config.kernel_size, 
-                num_layers=8, 
+                num_layers=4, 
                 pool_step=4, 
                 batch_size=config.batch_size, 
                 device=device)
 decoder = Decoder(latent_dim=100, 
                 output_dim=9, 
                 kernel_size=config.kernel_size, 
-                num_layers=8, 
+                num_layers=4, 
                 pool_step=4, 
                 device=device)
 model = CoordinateVAEModel(encoder=encoder, 
@@ -147,8 +147,13 @@ model.training = False
 model.eval()
 
 with torch.no_grad():
-    x_hats = np.zeros((len(test_dataloader), 9, 1024))
-    xs = np.zeros((len(test_dataloader), 9, 1024))
+    x_hats = np.zeros((len(test_dataloader)*config.batch_size, 9, 1024))
+    xs = np.zeros((len(test_dataloader)*config.batch_size, 9, 1024))
+    bp = np.zeros((len(test_dataloader)*config.batch_size, 9, 1024))
+    
+    start_idx = 0
+    end_idx = start_idx+config.batch_size
+
     for batch_idx, x in enumerate(test_dataloader):
         x = x.to(device).float()
         model.training = False
@@ -156,8 +161,12 @@ with torch.no_grad():
         x_hat = model(x)
         x_hat = x_hat.cpu().numpy()
 
-        x_hats[batch_idx, :, :] = x_hat[0]
-        xs[batch_idx, :, :] = x[0].cpu().numpy()
+        x_hats[start_idx:end_idx, :, :] = x_hat
+        xs[start_idx:end_idx, :, :] = x.cpu().numpy()
+        bp[start_idx:end_idx, :, :] = test_dataset.load_bp_data(start_idx, end_idx)
+
+        start_idx += config.batch_size
+        end_idx += config.batch_size
 
 # x = x.view(16, 1, input_dim)
 ax = plt.gca()
@@ -165,6 +174,7 @@ ax = plt.gca()
 time = np.arange(0, len(xs[:, 0, :].flatten())/100e3, 1/100e3)
 plt.plot(time, xs[:, 0, :].flatten())
 plt.plot(time, x_hats[:, 0, :].flatten())
+plt.plot(time, bp[:, 0, :].flatten())
 plt.xlabel("Time (s)")
 plt.ylabel("Amplitude (AU, normalised)")
 
