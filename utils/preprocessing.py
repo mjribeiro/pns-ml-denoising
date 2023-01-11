@@ -2,6 +2,7 @@ import numpy as np
 import plotly.graph_objects as go
 import random
 
+from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 from scipy import signal
 
@@ -105,42 +106,51 @@ def minmax_scaling(data):
     return 2 * (data - np.min(data)) / (np.max(data) - np.min(data)) - 1
 
 
-def prepare_n2n_data(noisy_inputs, filtered_data, num_chs=9, data_len=1024):
+def prepare_n2n_data(noisy_inputs, filtered_data, bp_data, fs=100e3, num_chs=9, data_len=1024):
     """
     Take noisy and filtered data and prepare to feed into Noise2Noise model.
     Needs independent noisy pairs to begin with, then more can be generated
     """
+    print("Started preparing data for Noise2Noise model...")
+    
     # Add GWN to filtered data
     noisy_targets = np.zeros_like(filtered_data)
 
     for data_idx in range(len(filtered_data)):
         for ch in range(num_chs):
-            data = filtered_data[data_idx, ch, :]
-            noisy_targets[data_idx, ch, :] = data + np.random.normal(0, 0.1, len(data))
+            data = filtered_data[data_idx, ch, :, 0]
+            noisy_targets[data_idx, ch, :, 0] = data + np.random.normal(0, 0.1, len(data))
+
+    # Create hold-out test set
+    n2n_X_train, n2n_X_test, n2n_y_train, n2n_y_test = train_test_split(noisy_inputs, noisy_targets, test_size=0.2, shuffle=False)
     
     # Create new input and target variables with point swaps
-    noisy_inputs_arr  = np.zeros((len(noisy_inputs) * 2, num_chs, data_len))
-    noisy_targets_arr = np.zeros((len(noisy_targets) * 2, num_chs, data_len))
+    noisy_inputs_arr  = np.zeros((len(n2n_X_train) * 2, num_chs, data_len, 2))
+    noisy_targets_arr = np.zeros((len(n2n_y_train) * 2, num_chs, data_len, 2))
 
     # Store original inputs/targets
-    noisy_inputs_arr[:len(noisy_inputs)] = noisy_inputs
-    noisy_targets_arr[:len(noisy_targets)] = noisy_targets
+    noisy_inputs_arr[:len(n2n_X_train)] = n2n_X_train
+    noisy_targets_arr[:len(n2n_y_train)] = n2n_y_train
 
-    for input, target, idx in zip(noisy_inputs, noisy_targets, range(len(noisy_inputs), len(noisy_inputs) * 2)):
+    for input, target, idx in zip(n2n_X_train, n2n_y_train, range(len(n2n_X_train), len(n2n_y_train) * 2)):
         # Pick arbitrary index for points to swap
-        rand_idx = random.randrange(len(input[ch, :]))
+        rand_idx = random.randrange(len(input[ch, :, 0]))
         
         for ch in range(num_chs):
             # Swap at specific index
-            input[ch, rand_idx], target[ch, rand_idx] = target[ch, rand_idx], input[ch, rand_idx]
+            input[ch, rand_idx, 0], target[ch, rand_idx, 0] = target[ch, rand_idx, 0], input[ch, rand_idx, 0]
 
             # Store in relevant arrays
-            noisy_inputs_arr[idx, ch, :] = input[ch, rand_idx]
-            noisy_targets_arr[idx, ch, :] = target[ch, rand_idx]
+            noisy_inputs_arr[idx, ch, :, :] = input[ch, rand_idx]
+            noisy_targets_arr[idx, ch, :, :] = target[ch, rand_idx]
 
     # TODO: Double amount of data by showing targets as inputs and inputs as targets too
 
-    return noisy_inputs_arr, noisy_targets_arr
+    print("Finished preparing data for Noise2Noise model...")
+    n2n_X_train = noisy_inputs_arr
+    n2n_y_train = noisy_targets_arr
+    
+    return n2n_X_train, n2n_X_test, n2n_y_train, n2n_y_test
 
 
 def remove_artefacts(data):

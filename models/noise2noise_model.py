@@ -7,18 +7,18 @@ import torch.nn.functional as F
 # TODO: Implement skips and concatenation
 
 class Noise2NoiseEncoder(nn.Module):
-    def __init__(self, num_channels, num_layers=7, kernel_size=3, pool_step=2) -> None:
+    def __init__(self, num_channels, kernel_size=3, pool_step=2) -> None:
         super(Noise2NoiseEncoder, self).__init__()
 
-        self.num_layers = num_layers
         self.layers = nn.ModuleList()
 
         # in_channels = [num_channels, 48, 48, 48, 48, 48, 48]
         # out_channels = [48, 48, 48, 48, 48, 48, 48]
         in_channels = [num_channels, 8, 8, 8, 8, 8, 8]
         out_channels = [8, 8, 8, 8, 8, 8, 8]
+        self.num_layers = len(out_channels)
         
-        for i in range(num_layers):
+        for i in range(self.num_layers):
             self.layers.append(nn.Conv1d(in_channels=in_channels[i], 
                                          out_channels=out_channels[i], 
                                          kernel_size=kernel_size, 
@@ -26,7 +26,7 @@ class Noise2NoiseEncoder(nn.Module):
                                          stride=1))
         
         self.maxpool    = nn.MaxPool1d(kernel_size=pool_step, stride=pool_step)
-        self.leaky_relu = nn.LeakyReLU(0.1)
+        self.leaky_relu = nn.LeakyReLU(0.5)
 
     def forward(self, x):
         encodings = [x]
@@ -45,18 +45,18 @@ class Noise2NoiseEncoder(nn.Module):
 
 
 class Noise2NoiseDecoder(nn.Module):
-    def __init__(self, num_channels, data_length, num_layers=11, kernel_size=3, pool_step=2) -> None:
+    def __init__(self, num_channels, kernel_size=3, pool_step=2) -> None:
         super(Noise2NoiseDecoder, self).__init__()
 
-        self.num_layers = num_layers
         self.layers = nn.ModuleList()
 
         # in_channels = [96, 96, 144, 96, 144, 96, 144, 96, 96+num_channels, 64, 32]
         # out_channels = [96, 96, 96, 96, 96, 96, 96, 96, 64, 32, num_channels]
         in_channels = [16, 16, 24, 16, 24, 16, 24, 16, 16+num_channels, 32, 16]
         out_channels = [16, 16, 16, 16, 16, 16, 16, 16, 32, 16, num_channels]
+        self.num_layers = len(in_channels)
 
-        for i in range(0, num_layers):
+        for i in range(self.num_layers):
             self.layers.append(nn.Conv1d(in_channels=in_channels[i], 
                                          out_channels=out_channels[i], 
                                          kernel_size=kernel_size, 
@@ -64,7 +64,7 @@ class Noise2NoiseDecoder(nn.Module):
                                          stride=1))
 
         self.upsample = nn.Upsample(scale_factor=pool_step)
-        self.leaky_relu = nn.LeakyReLU(0.1)
+        self.leaky_relu = nn.LeakyReLU(0.5)
         self.tanh = nn.Tanh()
 
     def forward(self, x, encodings):

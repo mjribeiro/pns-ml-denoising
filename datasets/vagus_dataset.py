@@ -47,14 +47,14 @@ class VagusDatasetN2N(torch.utils.data.Dataset):
 
     
     def _load_data(self):
-        data_file = f"vagus_{'train' if self.train else 'test'}_raw_1024.npy"
+        data_file = f"n2n_X_{'train' if self.train else 'test'}.npy"
         data = np.load(f"./data/Metcalfe-2014/{data_file}")
 
         return data
 
 
     def _load_targets(self):
-        targets_file = f"vagus_{'train' if self.train else 'test'}_filt_narrow_1024.npy"
+        targets_file = f"n2n_y_{'train' if self.train else 'test'}.npy"
         targets = np.load(f"./data/Metcalfe-2014/{targets_file}")
         
         return targets
