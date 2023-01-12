@@ -1,5 +1,6 @@
 import copy
 import gc
+import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
@@ -17,6 +18,8 @@ from datasets.vagus_dataset import VagusDatasetN2N
 
 
 def train():
+    matplotlib.use('agg')
+
     # Address GPU memory issues (source: https://stackoverflow.com/a/66921450)
     gc.collect()
     torch.cuda.empty_cache()
@@ -24,15 +27,15 @@ def train():
     # Select GPU if available
     device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
-    # Weights&Biases initialisation
+    # # Weights&Biases initialisation
     # wandb.init(project="PNS Denoising",
     #         config = {
     #             "learning_rate": 0.0001,
     #             "epochs": 1,
     #             "batch_size": 64,
     #             "kernel_size": 9})
-    # config = wandb.config
-    # wandb.init(project="PNS Denoising")
+    config = wandb.config
+    wandb.init(project="PNS Denoising")
 
     # Load vagus dataset
     train_dataset = VagusDatasetN2N(train=True)
@@ -139,23 +142,25 @@ def train():
             end_idx += config.batch_size
 
     time = np.arange(0, len(xs[1000:1004, 0, :].flatten())/100e3, 1/100e3)
-    # plt.plot(time, xs[1000:1004, 0, :].flatten(), label=f"Noisy input")
-    # plt.plot(time, xs_cleaner[1000:1004, 0, :].flatten(), label=f"Noisy labels")
-    # plt.plot(time, x_hats[1000:1004, 0, :].flatten(), label=f"Reconstructed")
-    # plt.legend()
-    # plt.savefig(f'./saved/n2n_{sweep_id}.png')
-    xs_y = xs[1000:1004, 0, :].flatten()
-    xs_cleaner_y =xs_cleaner[1000:1004, 0, :].flatten()
-    x_hats_y = x_hats[1000:1004, 0, :].flatten()
-    ys = [xs_y, xs_cleaner_y, x_hats_y]
 
-    # data = [[x, y] for (x, y) in zip(time, ys)]
-    # table = wandb.Table(data=data, columns = ["x", "y"])
-    wandb.log({"my_custom_plot_id" : wandb.plot.line_series(xs=time, ys=ys,
-               keys=["Noisy input","Noisy labels","Reconstructed"], title="Original signals vs reconstruction", xname="Time (s)")})
+    start_plot_sample = 1000
+    end_plot_sample = 1004
+    xs_y = xs[start_plot_sample:end_plot_sample, 0, :].flatten()
+    xs_cleaner_y =xs_cleaner[start_plot_sample:end_plot_sample, 0, :].flatten()
+    x_hats_y = x_hats[start_plot_sample:end_plot_sample, 0, :].flatten()
+    # ys = [xs_y, xs_cleaner_y, x_hats_y]
+
+    fig, ax = plt.subplots()
+    ax.plot(time, xs_y, label=f"Noisy input")
+    ax.plot(time, xs_cleaner_y, label=f"Noisy labels")
+    ax.plot(time, x_hats_y, label=f"Reconstructed")
+    ax.legend()
+    # fig.show()
+
+    wandb.log({"plot": fig})
 
     # wandb.finish()
-# sweep_id = 1289
+
 # train()
 
 # ----- HYPERPARAMETER OPT -----
@@ -167,8 +172,8 @@ sweep_configuration = {
         },
     'parameters': {
         'batch_size': {'values': [8, 16, 32, 64]},
-        'epochs': {'max': 500, 'min': 10},
-        'learning_rate': {'max': 0.1, 'min': 0.000001},
+        'epochs': {'max': 110, 'min': 10},
+        'learning_rate': {'distribution': 'inv_log_uniform_values', 'max': 0.1, 'min': 0.000001},
         'kernel_size': {'values': [1, 3, 5, 7, 9]}
     }
 }
