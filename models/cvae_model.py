@@ -58,8 +58,8 @@ class CoordinateEncoder(nn.Module):
         self.num_layers  = num_layers
         self.layers      = nn.ModuleList()
 
-        in_channels = [input_dim, 32, 64]
-        out_channels = [32, 64, conv_out_dim]
+        in_channels = [input_dim, 18, 36]
+        out_channels = [18, 36, conv_out_dim]
 
         for i in range(self.num_layers):
             self.layers.append(nn.Conv1d(in_channels=in_channels[i], 
@@ -71,7 +71,7 @@ class CoordinateEncoder(nn.Module):
         self.maxpool    = nn.MaxPool1d(kernel_size=self.pool_step, stride=self.pool_step)
         self.leaky_relu = nn.LeakyReLU()
         self.dropout    = nn.Dropout(0.05)
-        self.fcn        = nn.Linear(conv_out_dim, output_dim)
+        self.fcn        = nn.Linear(16, output_dim)
 
 
     def forward(self, x):
@@ -194,12 +194,12 @@ class Decoder(nn.Module):
     
 
 class CoordinateVAEModel(nn.Module):
-    def __init__(self, encoder, decoder):
+    def __init__(self, encoder, decoder, coordinate_encoder):
         super(CoordinateVAEModel, self).__init__()
         # self.CoordinateEncoder = CoordinateEncoder
         self.encoder = encoder
         self.decoder = decoder
-        # self.coordinate_encoder = coordinate_encoder
+        self.coordinate_encoder = coordinate_encoder
 
         self.N = torch.distributions.Normal(0, 1)
         self.N.loc = self.N.loc.cuda() # hack to get sampling on the GPU
@@ -213,7 +213,7 @@ class CoordinateVAEModel(nn.Module):
     def forward(self, x):
         # Get logits from encoder
         q_y, maxpool_indices = self.encoder(x)
-        # coord_encoding = self.coordinate_encoder
+        coord_encoding = self.coordinate_encoder(x)
 
         # Gumbel-Softmax activation on the latent space
         self.tau = 2*math.exp(-0.0003*self.epoch)
@@ -224,6 +224,13 @@ class CoordinateVAEModel(nn.Module):
         # Sample from gumbel distribution and return onehot
         # z = gumbel_softmax(latent_dim, categorical_dim, q_y, self.tau, hard=True)
         z = F.gumbel_softmax(q_y, tau=self.tau, hard=True)
+
+        # Concatenate sample of coordinate encoding
+        p = torch.tensor(torch.ones(coord_encoding.shape[1]) / coord_encoding.shape[1])
+        idx = p.multinomial(num_samples=10, replacement=False)
+        z_coord = coord_encoding[:, idx, :]
+
+        z = torch.concat((z, z_coord), dim=1)
         
         # Get output from decoder
         # return self.Decoder(z), F.softmax(q_y, dim=-1).reshape(*q.size()), categorical_dim

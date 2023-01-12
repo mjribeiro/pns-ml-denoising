@@ -32,13 +32,13 @@ def train():
     # Select GPU if available
     device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
-    # # Weights&Biases initialisation
-    # wandb.init(project="PNS Denoising",
-    #         config = {
-    #             "learning_rate": 0.0001,
-    #             "epochs": 1,
-    #             "batch_size": 1024,
-    #             "kernel_size": 9})
+    # Weights&Biases initialisation
+    wandb.init(project="PNS Denoising",
+            config = {
+                "learning_rate": 0.0001,
+                "epochs": 100,
+                "batch_size": 1024,
+                "kernel_size": 3})
 
     # Load vagus dataset
     train_dataset = VagusDatasetN2N(stage="train")
@@ -184,25 +184,29 @@ def train():
 
     wandb.log({"plot": fig})
 
-    # wandb.finish()
+    np.save("./results/n2n_noisy_input_ch1.npy", xs[:, 0, :].flatten())
+    np.save("./results/n2n_noisy_labels_ch1.npy", xs_cleaner[:, 0, :].flatten())
+    np.save("./results/n2n_reconstr_ch1.npy", x_hats[:, 0, :].flatten())
 
-# train()
+    wandb.finish()
 
-# ----- HYPERPARAMETER OPT -----
-sweep_configuration = {
-    'method': 'bayes',
-    'metric': {
-        'goal': 'minimize',
-        'name': 'val_loss'
-        },
-    'parameters': {
-        'batch_size': {'values': [1024]},
-        'epochs': {'max': 500, 'min': 10},
-        'learning_rate': {'distribution': 'inv_log_uniform_values', 'max': 0.1, 'min': 0.000001},
-        'kernel_size': {'values': [1, 3, 5, 7, 9]}
-    }
-}
+train()
 
-sweep_id = wandb.sweep(sweep=sweep_configuration, project="PNS Denoising")
+# # ----- HYPERPARAMETER OPT -----
+# sweep_configuration = {
+#     'method': 'bayes',
+#     'metric': {
+#         'goal': 'minimize',
+#         'name': 'val_loss'
+#         },
+#     'parameters': {
+#         'batch_size': {'values': [1024]},
+#         'epochs': {'max': 500, 'min': 10},
+#         'learning_rate': {'distribution': 'inv_log_uniform_values', 'max': 0.1, 'min': 0.000001},
+#         'kernel_size': {'values': [1, 3, 5, 7, 9]}
+#     }
+# }
 
-wandb.agent(sweep_id, train)
+# sweep_id = wandb.sweep(sweep=sweep_configuration, project="PNS Denoising")
+
+# wandb.agent(sweep_id, train)

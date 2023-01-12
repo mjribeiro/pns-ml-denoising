@@ -1,24 +1,20 @@
-
 import copy
 import gc
-import matplotlib.pyplot as plt
 import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import wandb
 
-from pathlib import Path
-from torch.optim import Adam
+from torch.optim import AdamW
 from torch.utils.data import DataLoader
-from torchsummary import summary
 
 # Temp
 import matplotlib.pyplot as plt
 
 # Local imports
-from models.cvae_model import *
-from datasets.vagus_dataset import VagusDataset
+from models.cvae_old import *
+from datasets.vagus_dataset import VagusDataset, VagusDatasetN2N
 
 # Address GPU memory issues (source: https://stackoverflow.com/a/66921450)
 gc.collect()
@@ -30,18 +26,20 @@ device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 # Weights&Biases initialisation
 wandb.init(project="PNS Denoising",
         config = {
-            "learning_rate": 0.001,
-            "epochs": 5,
-            "batch_size": 32,
+            "learning_rate": 0.01,
+            "epochs": 100,
+            "batch_size": 1024,
             "kernel_size": 3})
 
 config = wandb.config
 
 # Load vagus dataset
-train_dataset = VagusDataset(train=True)
-test_dataset  = VagusDataset(train=False)
+# train_dataset = VagusDataset(train=True)
+# test_dataset  = VagusDataset(train=False)
+train_dataset = VagusDatasetN2N(stage="train")
+test_dataset  = VagusDatasetN2N(stage="test")
 
-train_dataloader = DataLoader(train_dataset, batch_size=config.batch_size, shuffle=True, drop_last=True)
+train_dataloader = DataLoader(train_dataset, batch_size=config.batch_size, shuffle=True)
 test_dataloader = DataLoader(test_dataset, batch_size=config.batch_size, shuffle=False, drop_last=True)
 
 # sample = train_dataset.__getitem__(0)
@@ -53,28 +51,20 @@ test_dataloader = DataLoader(test_dataset, batch_size=config.batch_size, shuffle
 # Define model
 print("Setting up coordinate VAE model...")
 encoder = Encoder(input_dim=9, 
-                  latent_dim=120, 
-                  kernel_size=config.kernel_size, 
-                  num_layers=6, 
-                  pool_step=2, 
-                  batch_size=config.batch_size, 
-                  device=device)
-decoder = Decoder(latent_dim=130, # TODO: Include this in model instead 
-                  output_dim=9, 
-                  kernel_size=config.kernel_size, 
-                  num_layers=6, 
-                  pool_step=2, 
-                  device=device)
-coordinate_encoder = CoordinateEncoder(input_dim=9,
-                                       conv_out_dim=72,
-                                       output_dim=128,
-                                       kernel_size=3,
-                                       num_layers=3,
-                                       pool_step=4,
-                                       device=device)
-model = CoordinateVAEModel(encoder=encoder, 
-                           decoder=decoder,
-                           coordinate_encoder=coordinate_encoder)
+                latent_dim=100, 
+                kernel_size=config.kernel_size, 
+                num_layers=4, 
+                pool_step=4, 
+                batch_size=config.batch_size, 
+                device=device)
+decoder = Decoder(latent_dim=100, 
+                output_dim=9, 
+                kernel_size=config.kernel_size, 
+                num_layers=4, 
+                pool_step=4, 
+                device=device)
+model = CoordinateVAEModel(Encoder=encoder, 
+                        Decoder=decoder)
 
 # Hyperparameter setup
 mse_loss = nn.MSELoss()
@@ -91,12 +81,10 @@ def loss_function(x, x_hat, kld_weight):
     return MSE + KLD, KLD
 
 
-optimizer = Adam(model.parameters(), 
+optimizer = AdamW(model.parameters(), 
                 lr=config.learning_rate,
                 weight_decay=1e-5)
 wandb.watch(model, log="all")
-
-# summary(model, (9, 1024), device='cpu')
 
 # Training
 print("Start training VAE...")
@@ -104,10 +92,10 @@ print("Start training VAE...")
 if torch.cuda.is_available():
     model.cuda()
 
-# ----- TRAINING -----
 model.train()
 
 best_loss = 99999.0
+best_loss_epoch = 0
 kld_weight = 0.5
 kld_rate = 0 # TODO: Change this to rate of increase as per:
                     # https://arxiv.org/pdf/1511.06349.pdf
@@ -119,7 +107,7 @@ for epoch in range(config.epochs):
     # TODO: Check if epoch should be zero-indexed or not - doesn't seem to make a difference?
     model.epoch = epoch
 
-    for batch_idx, x in enumerate(train_dataloader):
+    for batch_idx, (_, x) in enumerate(train_dataloader):
         x = x.to(device).float()
 
         optimizer.zero_grad()
@@ -127,27 +115,33 @@ for epoch in range(config.epochs):
         x_hat = model(x)
         loss, kld = loss_function(x, x_hat, kld_weight=kld_weight)
 
-        if loss < best_loss:
-            best_model = copy.deepcopy(model)
-
         # kld_tracked.append(kld.detach().cpu())
         # kld_w_tracked.append(kld_weight)
         
-        overall_loss += loss.item()
+        overall_loss += loss.item() * x.size(0)
         
         loss.backward()
         optimizer.step()
         
-    print("\tEpoch", epoch + 1, "complete!", "\tAverage Loss: ", overall_loss / (batch_idx*config.batch_size))
-    wandb.log({"loss": overall_loss / (batch_idx*config.batch_size)})
+    average_loss = overall_loss / len(train_dataset)
+    
+    print("\tEpoch", epoch + 1, "complete!", "\tAverage Loss: ", average_loss)
+    wandb.log({"loss": average_loss})
+
+    if loss < best_loss:
+        best_model = copy.deepcopy(model)
+        best_loss = average_loss
+        best_loss_epoch = epoch
+
+    if epoch > best_loss_epoch + 20:
+        break
         
 print("Finished!")
 
-Path('./saved/').mkdir(parents=True, exist_ok=True)
-torch.save(best_model.state_dict(), './saved/coordinate_vae.pth')
+# TODO: Folder needs to be created/checked if exists before using torch.save()
+PATH = './saved/coordinate_vae.pth'
+torch.save(model.state_dict(), PATH)
 
-# ----- INFERENCE -----
-# model.load_state_dict(torch.load('./saved/coordinate_vae.pth'))
 model = best_model
 model.training = False
 
@@ -164,7 +158,7 @@ with torch.no_grad():
     start_idx = 0
     end_idx = start_idx+config.batch_size
 
-    for batch_idx, x in enumerate(test_dataloader):
+    for batch_idx, (_, x) in enumerate(test_dataloader):
         x = x.to(device).float()
         model.training = False
         
@@ -190,5 +184,8 @@ plt.ylabel("Amplitude (AU, normalised)")
 
 plt.rcParams.update({'font.size': 22})
 plt.show()
+
+np.save("./results/cvae_noisy_input_ch1.npy", xs[:, 0, :].flatten())
+np.save("./results/cvae_reconstr_ch1.npy", x_hats[:, 0, :].flatten())
 
 wandb.finish()

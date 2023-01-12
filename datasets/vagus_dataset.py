@@ -58,3 +58,6 @@ class VagusDatasetN2N(torch.utils.data.Dataset):
         targets = np.load(f"./data/Metcalfe-2014/{targets_file}")
         
         return targets
+
+    def load_bp_data(self, idx_start, idx_end):
+        return self.data[idx_start:idx_end, :, :, 1]
