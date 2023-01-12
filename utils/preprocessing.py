@@ -123,7 +123,8 @@ def prepare_n2n_data(noisy_inputs, filtered_data, bp_data, fs=100e3, num_chs=9, 
 
     # Create hold-out test set
     n2n_X_train, n2n_X_test, n2n_y_train, n2n_y_test = train_test_split(noisy_inputs, noisy_targets, test_size=0.2, shuffle=False)
-    
+    n2n_X_train, n2n_X_val, n2n_y_train, n2n_y_val = train_test_split(noisy_inputs, noisy_targets, test_size=0.1, shuffle=False)
+
     # Create new input and target variables with point swaps
     noisy_inputs_arr  = np.zeros((len(n2n_X_train) * 2, num_chs, data_len, 2))
     noisy_targets_arr = np.zeros((len(n2n_y_train) * 2, num_chs, data_len, 2))
@@ -150,7 +151,7 @@ def prepare_n2n_data(noisy_inputs, filtered_data, bp_data, fs=100e3, num_chs=9, 
     n2n_X_train = noisy_inputs_arr
     n2n_y_train = noisy_targets_arr
     
-    return n2n_X_train, n2n_X_test, n2n_y_train, n2n_y_test
+    return n2n_X_train, n2n_X_val, n2n_X_test, n2n_y_train, n2n_y_val, n2n_y_test
 
 
 def remove_artefacts(data):

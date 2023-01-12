@@ -6,6 +6,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 import wandb
+import random
 
 from pathlib import Path
 from torch.optim import Adam
@@ -20,6 +21,10 @@ from datasets.vagus_dataset import VagusDatasetN2N
 def train():
     matplotlib.use('agg')
 
+    torch.manual_seed(0)
+    np.random.seed(0)
+    random.seed(0)
+
     # Address GPU memory issues (source: https://stackoverflow.com/a/66921450)
     gc.collect()
     torch.cuda.empty_cache()
@@ -32,19 +37,19 @@ def train():
     #         config = {
     #             "learning_rate": 0.0001,
     #             "epochs": 1,
-    #             "batch_size": 64,
+    #             "batch_size": 1024,
     #             "kernel_size": 9})
-    config = wandb.config
-    wandb.init(project="PNS Denoising")
 
     # Load vagus dataset
-    train_dataset = VagusDatasetN2N(train=True)
-    test_dataset  = VagusDatasetN2N(train=False)
+    train_dataset = VagusDatasetN2N(stage="train")
+    val_dataset   = VagusDatasetN2N(stage="val")
+    test_dataset  = VagusDatasetN2N(stage="test")
 
     wandb.init(project="PNS Denoising")
     config = wandb.config
 
     train_dataloader = DataLoader(train_dataset, batch_size=config.batch_size, shuffle=True)
+    val_dataloader   = DataLoader(val_dataset, batch_size=config.batch_size, shuffle=True)
     test_dataloader  = DataLoader(test_dataset, batch_size=config.batch_size, shuffle=False, drop_last=True)
 
     sample, _ = train_dataset[0]
@@ -53,7 +58,7 @@ def train():
     print("Setting up Noise2Noise model...")
     encoder = Noise2NoiseEncoder(num_channels=sample.shape[0])
     decoder = Noise2NoiseDecoder(num_channels=sample.shape[0])
-    model = Noise2NoiseModel(encoder=encoder, decoder=decoder).to(device)
+    model   = Noise2NoiseModel(encoder=encoder, decoder=decoder).to(device)
 
     # Hyperparameter setup
     mse_loss = nn.MSELoss()
@@ -63,7 +68,7 @@ def train():
 
 
     optimizer = Adam(model.parameters(),
-                    lr=config.learning_rate)
+                     lr=config.learning_rate)
     wandb.watch(model, log="all")
 
     # Training
@@ -81,7 +86,7 @@ def train():
     for epoch in range(config.epochs):
         overall_loss = 0
 
-        for batch_idx, (inputs, targets) in enumerate(train_dataloader):
+        for _, (inputs, targets) in enumerate(train_dataloader):
             inputs = inputs.to(device).float()
             targets = targets.to(device).float()
 
@@ -90,12 +95,15 @@ def train():
             x_hat = model(inputs)
             loss = loss_function(targets, x_hat)
 
-            overall_loss += loss.item()
+            overall_loss += loss.item() * inputs.size(0)
 
             loss.backward()
             optimizer.step()
 
-        average_loss = overall_loss / (batch_idx*config.batch_size)
+        # average_loss = overall_loss / (batch_idx*config.batch_size)
+        # Sources for new loss: https://stackoverflow.com/questions/61284248/is-it-a-good-idea-to-multiply-loss-item-by-batch-size-to-get-the-loss-of-a-bat
+        # https://pytorch.org/tutorials/beginner/transfer_learning_tutorial.html
+        average_loss = overall_loss / len(train_dataset)
 
         if average_loss < best_loss:
             best_model = copy.deepcopy(model)
@@ -113,13 +121,30 @@ def train():
     Path('./saved/').mkdir(parents=True, exist_ok=True)
     # torch.save(best_model.state_dict(), './saved/noise2noise.pth')
 
-    # ----- INFERENCE -----
+    
+    # ----- VALIDATION FOR HYPERPARAMETER OPT -----
     # model.load_state_dict(torch.load('./saved/noise2noise.pth'))
     model = best_model
 
-    # Inference
     model.eval()
 
+    with torch.no_grad():
+        overall_val_loss = 0
+        for _, (inputs, targets) in enumerate(val_dataloader):
+            inputs = inputs.to(device).float()
+            targets = targets.to(device).float()
+
+            x_hat = model(inputs)
+            loss = loss_function(targets, x_hat)
+
+            overall_val_loss += loss.item() * inputs.size(0)
+
+        average_val_loss = overall_val_loss / len(val_dataset)
+        print("\tAverage Validation Loss: ", average_val_loss)
+        wandb.log({"val_loss": average_val_loss})
+
+    
+    # ----- INFERENCE -----
     with torch.no_grad():
         x_hats = np.zeros((len(test_dataloader)*config.batch_size, 9, 1024))
         xs = np.zeros((len(test_dataloader)*config.batch_size, 9, 1024))
@@ -168,11 +193,11 @@ sweep_configuration = {
     'method': 'bayes',
     'metric': {
         'goal': 'minimize',
-        'name': 'loss'
+        'name': 'val_loss'
         },
     'parameters': {
-        'batch_size': {'values': [8, 16, 32, 64]},
-        'epochs': {'max': 110, 'min': 10},
+        'batch_size': {'values': [1024]},
+        'epochs': {'max': 500, 'min': 10},
         'learning_rate': {'distribution': 'inv_log_uniform_values', 'max': 0.1, 'min': 0.000001},
         'kernel_size': {'values': [1, 3, 5, 7, 9]}
     }
