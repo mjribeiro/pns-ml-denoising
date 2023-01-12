@@ -59,7 +59,7 @@ def train():
         return mse_loss(x, x_hat)
 
 
-    optimizer = Adam(model.parameters(), 
+    optimizer = Adam(model.parameters(),
                     lr=config.learning_rate)
     wandb.watch(model, log="all")
 
@@ -73,6 +73,7 @@ def train():
     model.train()
 
     best_loss = 99999.0
+    best_loss_epoch = 0
 
     for epoch in range(config.epochs):
         overall_loss = 0
@@ -86,21 +87,28 @@ def train():
             x_hat = model(inputs)
             loss = loss_function(targets, x_hat)
 
-            if loss < best_loss:
-                best_model = copy.deepcopy(model)
-            
             overall_loss += loss.item()
-            
+
             loss.backward()
             optimizer.step()
-            
-        print("\tEpoch", epoch + 1, "complete!", "\tAverage Loss: ", overall_loss / (batch_idx*config.batch_size))
-        wandb.log({"loss": overall_loss / (batch_idx*config.batch_size)})
-            
+
+        average_loss = overall_loss / (batch_idx*config.batch_size)
+
+        if average_loss < best_loss:
+            best_model = copy.deepcopy(model)
+            best_loss = average_loss
+            best_loss_epoch = epoch
+
+        print("\tEpoch", epoch + 1, "complete!", "\tAverage Loss: ", average_loss)
+        wandb.log({"loss": average_loss})
+
+        if epoch > best_loss_epoch + 20:
+            break
+
     print("Finished!")
 
     Path('./saved/').mkdir(parents=True, exist_ok=True)
-    torch.save(best_model.state_dict(), './saved/noise2noise.pth')
+    # torch.save(best_model.state_dict(), './saved/noise2noise.pth')
 
     # ----- INFERENCE -----
     # model.load_state_dict(torch.load('./saved/noise2noise.pth'))
@@ -120,7 +128,7 @@ def train():
         for batch_idx, (inputs, targets) in enumerate(test_dataloader):
             inputs = inputs.to(device).float()
             targets = targets.to(device).float()
-            
+
             x_hat = model(inputs)
 
             x_hats[start_idx:end_idx, :, :] = x_hat.cpu().numpy()
@@ -140,7 +148,7 @@ def train():
     xs_cleaner_y =xs_cleaner[1000:1004, 0, :].flatten()
     x_hats_y = x_hats[1000:1004, 0, :].flatten()
     ys = [xs_y, xs_cleaner_y, x_hats_y]
-    
+
     # data = [[x, y] for (x, y) in zip(time, ys)]
     # table = wandb.Table(data=data, columns = ["x", "y"])
     wandb.log({"my_custom_plot_id" : wandb.plot.line_series(xs=time, ys=ys,
@@ -154,7 +162,7 @@ def train():
 sweep_configuration = {
     'method': 'bayes',
     'metric': {
-        'goal': 'minimize', 
+        'goal': 'minimize',
         'name': 'loss'
         },
     'parameters': {
