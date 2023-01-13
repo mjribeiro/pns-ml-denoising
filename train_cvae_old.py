@@ -92,6 +92,9 @@ print("Start training VAE...")
 if torch.cuda.is_available():
     model.cuda()
 
+# Get parameter count
+# print(sum(p.numel() for p in model.parameters()))
+
 model.train()
 
 best_loss = 99999.0

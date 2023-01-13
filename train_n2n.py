@@ -77,6 +77,9 @@ def train():
     if torch.cuda.is_available():
         model.cuda()
 
+    # Get parameter count
+    # print(sum(p.numel() for p in model.parameters()))
+
     # ----- TRAINING -----
     model.train()
 
