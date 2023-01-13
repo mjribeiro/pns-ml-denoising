@@ -2,8 +2,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from scipy.interpolate import make_interp_spline, BSpline
-from scipy.signal import find_peaks
+from scipy.interpolate import make_interp_spline
+from scipy.signal import butter, filtfilt, find_peaks
 
 # Local imports
 from datasets.vagus_dataset import VagusDatasetN2N
@@ -13,13 +13,19 @@ def rolling_rms(x, N):
     # Source: https://dsp.stackexchange.com/a/74822
     return (pd.DataFrame(abs(x)**2).rolling(N).mean()) ** 0.5 
 
-def calculate_envelope(x):
+def calculate_envelope_points(x):
     peak_idx, _ = find_peaks(x, prominence=0.5)
 
     # Then return these and plot as line
     return peak_idx
 
+def butter_lowpass(cutoff, fs, order=5):
+    return butter(order, cutoff, fs=fs, btype='low', analog=False)
 
+def butter_lowpass_filter(data, cutoff, fs, order=5):
+    b, a = butter_lowpass(cutoff, fs, order=order)
+    y = filtfilt(b, a, data)
+    return y
 
 # Load original test data
 test_dataset = VagusDatasetN2N(stage="test")
@@ -54,14 +60,19 @@ zoom_n2n_reconstr = n2n_reconstr_ch1[zoom_start:zoom_end]
 zoom_time = np.arange(0, len(zoom_n2n_noisy)/100e3, 1/100e3)
 
 fig, (ax1, ax2, ax3, ax4, ax5) = plt.subplots(5, 1)
+fig.tight_layout()
 
 # 1) CVAE data
 ax1.plot(zoom_time, zoom_cvae_noisy, alpha=0.3)
 ax1.plot(zoom_time, zoom_cvae_reconstr)
+ax1.set_xlabel("Time (s)")
+ax1.set_ylabel("Amplitude (norm.)")
 
 # 2) N2N data
 ax2.plot(zoom_time, zoom_n2n_noisy, alpha=0.3)
 ax2.plot(zoom_time, zoom_n2n_reconstr)
+ax2.set_xlabel("Time (s)")
+ax2.set_ylabel("Amplitude (norm.)")
 
 # 3) BP with envelope
 entire_bp_recording = test_dataset.load_bp_data(0, len(test_dataset))
@@ -72,14 +83,25 @@ max_idx = len(time_full)
 
 ch1_bp_recording = entire_bp_recording[:, 0, :].flatten()
 
-peaks = calculate_envelope(ch1_bp_recording)
+
+peaks = calculate_envelope_points(ch1_bp_recording)
 peaks = list(filter(lambda x : x < max_idx, peaks))
 
 peaks_x = [x/100e3 for x in peaks]
 
+# Make spline from envelope points
+spl = make_interp_spline(peaks_x, ch1_bp_recording[peaks])
+xnew = np.linspace(min(peaks_x), max(peaks_x), 1000)
+spl_y = spl(xnew)
+
+# Lowpass filter envelope so it's smoother
+bp_envelope = butter_lowpass_filter(spl_y, 15, 1000)
+
 ax3.plot(time_full, ch1_bp_recording[:max_idx])
-ax3.plot(peaks_x, ch1_bp_recording[peaks], '--')
+ax3.plot(xnew, bp_envelope)
 ax3.set_xlim([-2.5, 22.5])
+ax3.set_xlabel("Time (s)")
+ax3.set_ylabel("Amplitude")
 
 # 4) Moving RMS window of whole data
 N_CVAE = int(1000e-3 * 100e3) # 500 ms in samples
@@ -89,11 +111,15 @@ N_N2N = int(1000e-3 * 100e3) # 500 ms in samples
 cvae_reconstr_ch1_rms = rolling_rms(cvae_reconstr_ch1, N_CVAE) 
 ax4.plot(time_full, cvae_reconstr_ch1_rms)
 ax4.set_xlim([-2.5, 22.5])
+ax4.set_xlabel("Time (s)")
+ax4.set_ylabel("Amplitude (norm.)")
 
 # 4.2) N2N
 n2n_reconstr_ch1_rms = rolling_rms(n2n_reconstr_ch1, N_N2N) 
 ax5.plot(time_full, n2n_reconstr_ch1_rms)
 ax5.set_xlim([-2.5, 22.5])
+ax5.set_xlabel("Time (s)")
+ax5.set_ylabel("Amplitude (norm.)")
 
 plt.show()
 
