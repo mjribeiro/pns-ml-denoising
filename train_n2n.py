@@ -3,6 +3,7 @@ import gc
 import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
+import time
 import torch
 import torch.nn as nn
 import wandb
@@ -35,8 +36,8 @@ def train():
     # Weights&Biases initialisation
     wandb.init(project="PNS Denoising",
             config = {
-                "learning_rate": 0.0001,
-                "epochs": 100,
+                "learning_rate": 0.00001,
+                "epochs": 170,
                 "batch_size": 1024,
                 "kernel_size": 3})
 
@@ -81,6 +82,7 @@ def train():
     # print(sum(p.numel() for p in model.parameters()))
 
     # ----- TRAINING -----
+    training_start_time = time.time()
     model.train()
 
     best_loss = 99999.0
@@ -120,6 +122,7 @@ def train():
             break
 
     print("Finished!")
+    print('Training finished, took {:.2f}s'.format(time.time() - training_start_time))
 
     Path('./saved/').mkdir(parents=True, exist_ok=True)
     # torch.save(best_model.state_dict(), './saved/noise2noise.pth')
@@ -169,7 +172,7 @@ def train():
             start_idx += config.batch_size
             end_idx += config.batch_size
 
-    time = np.arange(0, len(xs[1000:1004, 0, :].flatten())/100e3, 1/100e3)
+    time_plot = np.arange(0, len(xs[1000:1004, 0, :].flatten())/100e3, 1/100e3)
 
     start_plot_sample = 1000
     end_plot_sample = 1004
@@ -179,9 +182,9 @@ def train():
     # ys = [xs_y, xs_cleaner_y, x_hats_y]
 
     fig, ax = plt.subplots()
-    ax.plot(time, xs_y, label=f"Noisy input")
-    ax.plot(time, xs_cleaner_y, label=f"Noisy labels")
-    ax.plot(time, x_hats_y, label=f"Reconstructed")
+    ax.plot(time_plot, xs_y, label=f"Noisy input")
+    ax.plot(time_plot, xs_cleaner_y, label=f"Noisy labels")
+    ax.plot(time_plot, x_hats_y, label=f"Reconstructed")
     ax.legend()
     # fig.show()
 

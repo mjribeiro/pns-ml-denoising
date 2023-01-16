@@ -1,12 +1,13 @@
 import copy
 import gc
 import numpy as np
+import time
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import wandb
 
-from torch.optim import AdamW
+from torch.optim import Adam
 from torch.utils.data import DataLoader
 
 # Temp
@@ -15,6 +16,7 @@ import matplotlib.pyplot as plt
 # Local imports
 from models.cvae_old import *
 from datasets.vagus_dataset import VagusDataset, VagusDatasetN2N
+
 
 # Address GPU memory issues (source: https://stackoverflow.com/a/66921450)
 gc.collect()
@@ -26,8 +28,8 @@ device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 # Weights&Biases initialisation
 wandb.init(project="PNS Denoising",
         config = {
-            "learning_rate": 0.01,
-            "epochs": 100,
+            "learning_rate": 1e-3,
+            "epochs": 500,
             "batch_size": 1024,
             "kernel_size": 3})
 
@@ -54,14 +56,14 @@ encoder = Encoder(input_dim=9,
                 latent_dim=100, 
                 kernel_size=config.kernel_size, 
                 num_layers=4, 
-                pool_step=4, 
+                pool_step=2, 
                 batch_size=config.batch_size, 
                 device=device)
 decoder = Decoder(latent_dim=100, 
                 output_dim=9, 
                 kernel_size=config.kernel_size, 
                 num_layers=4, 
-                pool_step=4, 
+                pool_step=2, 
                 device=device)
 model = CoordinateVAEModel(Encoder=encoder, 
                         Decoder=decoder)
@@ -81,9 +83,8 @@ def loss_function(x, x_hat, kld_weight):
     return MSE + KLD, KLD
 
 
-optimizer = AdamW(model.parameters(), 
-                lr=config.learning_rate,
-                weight_decay=1e-5)
+optimizer = Adam(model.parameters(), 
+                lr=config.learning_rate)
 wandb.watch(model, log="all")
 
 # Training
@@ -94,6 +95,8 @@ if torch.cuda.is_available():
 
 # Get parameter count
 # print(sum(p.numel() for p in model.parameters()))
+
+training_start_time = time.time()
 
 model.train()
 
@@ -140,6 +143,7 @@ for epoch in range(config.epochs):
         break
         
 print("Finished!")
+print('Training finished, took {:.2f}s'.format(time.time() - training_start_time))
 
 # TODO: Folder needs to be created/checked if exists before using torch.save()
 PATH = './saved/coordinate_vae.pth'

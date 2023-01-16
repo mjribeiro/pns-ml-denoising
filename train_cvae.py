@@ -11,14 +11,14 @@ import wandb
 from pathlib import Path
 from torch.optim import Adam
 from torch.utils.data import DataLoader
-from torchsummary import summary
+# from torchsummary import summary
 
 # Temp
 import matplotlib.pyplot as plt
 
 # Local imports
 from models.cvae_model import *
-from datasets.vagus_dataset import VagusDataset
+from datasets.vagus_dataset import VagusDataset, VagusDatasetN2N
 
 # Address GPU memory issues (source: https://stackoverflow.com/a/66921450)
 gc.collect()
@@ -31,17 +31,23 @@ device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 wandb.init(project="PNS Denoising",
         config = {
             "learning_rate": 0.001,
-            "epochs": 5,
+            "epochs": 2,
             "batch_size": 32,
             "kernel_size": 3})
 
 config = wandb.config
 
 # Load vagus dataset
-train_dataset = VagusDataset(train=True)
-test_dataset  = VagusDataset(train=False)
+# train_dataset = VagusDataset(train=True)
+# test_dataset  = VagusDataset(train=False)
 
-train_dataloader = DataLoader(train_dataset, batch_size=config.batch_size, shuffle=True, drop_last=True)
+# train_dataloader = DataLoader(train_dataset, batch_size=config.batch_size, shuffle=True, drop_last=True)
+# test_dataloader = DataLoader(test_dataset, batch_size=config.batch_size, shuffle=False, drop_last=True)
+
+train_dataset = VagusDatasetN2N(stage="train")
+test_dataset  = VagusDatasetN2N(stage="test")
+
+train_dataloader = DataLoader(train_dataset, batch_size=config.batch_size, shuffle=True)
 test_dataloader = DataLoader(test_dataset, batch_size=config.batch_size, shuffle=False, drop_last=True)
 
 # sample = train_dataset.__getitem__(0)
@@ -52,29 +58,50 @@ test_dataloader = DataLoader(test_dataset, batch_size=config.batch_size, shuffle
 
 # Define model
 print("Setting up coordinate VAE model...")
-encoder = Encoder(input_dim=9, 
-                  latent_dim=120, 
+
+# Get sample from dataset for figuring out number of channels etc automatically :)
+sample = next(iter(train_dataloader))[0]
+
+encoder = Encoder(input_dim=sample.shape[1],
                   kernel_size=config.kernel_size, 
-                  num_layers=6, 
+                  num_layers=7, 
                   pool_step=2, 
                   batch_size=config.batch_size, 
                   device=device)
-decoder = Decoder(latent_dim=130, # TODO: Include this in model instead 
-                  output_dim=9, 
-                  kernel_size=config.kernel_size, 
-                  num_layers=6, 
-                  pool_step=2, 
-                  device=device)
-coordinate_encoder = CoordinateEncoder(input_dim=9,
-                                       conv_out_dim=72,
-                                       output_dim=128,
+
+# Get latent data size for coordinate encoder - depends on number of layers and pool size
+# of main encoder, since differing amounts of maxpooling may be used
+with torch.no_grad():
+    x = torch.randn_like(sample).float()
+    test_encoder_output, _   = encoder(x)
+    coord_encoder_output_dim = test_encoder_output.shape[-1]
+
+coordinate_encoder = CoordinateEncoder(input_dim=sample.shape[1],
+                                       output_dim=coord_encoder_output_dim,
+                                       all_samples=10,
+                                       subset_samples=5,
                                        kernel_size=3,
-                                       num_layers=3,
+                                       num_layers=4,
                                        pool_step=4,
                                        device=device)
+coordinate_encoder.to(device)
+
+# Get size of coordinate encoder output
+with torch.no_grad():
+    _, sampled_data   = coordinate_encoder(test_encoder_output)
+    decoder_input_dim = sampled_data.shape[1]
+
+decoder = Decoder(latent_dim=decoder_input_dim+test_encoder_output.shape[1], # TODO: Include this in model instead 
+                  output_dim=sample.shape[1], 
+                  kernel_size=config.kernel_size, 
+                  num_layers=7, 
+                  pool_step=2, 
+                  device=device)
+
 model = CoordinateVAEModel(encoder=encoder, 
                            decoder=decoder,
-                           coordinate_encoder=coordinate_encoder)
+                           coordinate_encoder=coordinate_encoder,
+                           device=device)
 
 # Hyperparameter setup
 mse_loss = nn.MSELoss()
@@ -109,17 +136,13 @@ model.train()
 
 best_loss = 99999.0
 kld_weight = 0.5
-kld_rate = 0 # TODO: Change this to rate of increase as per:
-                    # https://arxiv.org/pdf/1511.06349.pdf
-# kld_tracked = []
-# kld_w_tracked = []
 
 for epoch in range(config.epochs):
     overall_loss = 0
     # TODO: Check if epoch should be zero-indexed or not - doesn't seem to make a difference?
     model.epoch = epoch
 
-    for batch_idx, x in enumerate(train_dataloader):
+    for batch_idx, (_, x) in enumerate(train_dataloader):
         x = x.to(device).float()
 
         optimizer.zero_grad()
@@ -129,9 +152,6 @@ for epoch in range(config.epochs):
 
         if loss < best_loss:
             best_model = copy.deepcopy(model)
-
-        # kld_tracked.append(kld.detach().cpu())
-        # kld_w_tracked.append(kld_weight)
         
         overall_loss += loss.item()
         
@@ -164,7 +184,7 @@ with torch.no_grad():
     start_idx = 0
     end_idx = start_idx+config.batch_size
 
-    for batch_idx, x in enumerate(test_dataloader):
+    for batch_idx, (_, x) in enumerate(test_dataloader):
         x = x.to(device).float()
         model.training = False
         
@@ -179,16 +199,23 @@ with torch.no_grad():
         end_idx += config.batch_size
 
 # x = x.view(16, 1, input_dim)
-ax = plt.gca()
+fig, ax = plt.subplots()
+# ax = plt.gca()
 
-time = np.arange(0, len(xs[:, 0, :].flatten())/100e3, 1/100e3)
-plt.plot(time, xs[:, 0, :].flatten())
-plt.plot(time, x_hats[:, 0, :].flatten())
-plt.plot(time, bp[:, 0, :].flatten())
-plt.xlabel("Time (s)")
-plt.ylabel("Amplitude (AU, normalised)")
+start_plot_sample = 1000
+end_plot_sample = 1004
 
-plt.rcParams.update({'font.size': 22})
-plt.show()
+time = np.arange(0, len(xs[start_plot_sample:end_plot_sample, 0, :].flatten())/100e3, 1/100e3)
+
+ax.plot(time, xs[start_plot_sample:end_plot_sample, 0, :].flatten(), label="Noisy input")
+ax.plot(time, x_hats[start_plot_sample:end_plot_sample, 0, :].flatten(), label="Reconstructed")
+# ax.plot(time, bp[:, 0, :].flatten())
+# ax.xlabel("Time (s)")
+# ax.ylabel("Amplitude (AU, normalised)")
+
+# plt.rcParams.update({'font.size': 22})
+# plt.show()
+
+wandb.log({"plot": fig})
 
 wandb.finish()

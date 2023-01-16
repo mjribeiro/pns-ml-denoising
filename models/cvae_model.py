@@ -1,10 +1,32 @@
 import math
+import numpy as np
+import operator
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
 no_cuda = False
 is_cuda = not no_cuda and torch.cuda.is_available()
+
+
+# Source: https://stackoverflow.com/a/36609741/12891956
+def get_baseline_samples(data, device, k=10, n=5):
+    """
+    Find k samples closest to baseline (0 V) and randomly sumsample n of them to be input
+    to coordinate encoder from Coordinate VAE paper (Hardcastle et al, 2019)
+    """
+    data_npy = data.cpu().numpy()
+
+    sorted_list = np.sort(np.absolute(data_npy))[:, :, :k]
+    random_indices = np.random.randint(0, sorted_list.shape[2], size=n)
+
+    sampled_data = np.zeros((data_npy.shape[0], data_npy.shape[1], n))
+    
+    for ch in range(data_npy.shape[1]):
+        random_indices = np.random.randint(0, sorted_list.shape[2], size=n)
+        sampled_data[:, ch, :] = sorted_list[:, ch, random_indices]
+
+    return torch.from_numpy(sampled_data).to(device).float()
 
 
 # Source: https://neptune.ai/blog/gumbel-softmax-loss-function-guide-how-to-implement-it-in-pytorch
@@ -47,52 +69,66 @@ def gumbel_softmax(latent_dim, categorical_dim, logits, temperature, hard=False)
 
 # Based on: https://github.com/Jackson-Kang/Pytorch-VAE-tutorial/blob/master/01_Variational_AutoEncoder.ipynb
 class CoordinateEncoder(nn.Module):
-    def __init__(self, input_dim, conv_out_dim, output_dim, kernel_size, num_layers, pool_step, device):
+    def __init__(self, input_dim, output_dim, all_samples, subset_samples, kernel_size, num_layers, pool_step, device):
         super(CoordinateEncoder, self).__init__()
 
-        self.device = device
+        self.device         = device
+        self.input_dim      = input_dim
+        self.output_dim     = output_dim
+        self.all_samples    = all_samples
+        self.subset_samples = subset_samples
+        self.pool_step      = pool_step
+        self.num_layers     = num_layers
+        self.layers         = nn.ModuleList()
 
-        self.input_dim   = input_dim
-        self.output_dim  = output_dim
-        self.pool_step   = pool_step
-        self.num_layers  = num_layers
-        self.layers      = nn.ModuleList()
-
-        in_channels = [input_dim, 18, 36]
-        out_channels = [18, 36, conv_out_dim]
-
-        for i in range(self.num_layers):
-            self.layers.append(nn.Conv1d(in_channels=in_channels[i], 
-                                         out_channels=out_channels[i], 
+        for i in range(self.num_layers-1):
+            self.layers.append(nn.Conv1d(in_channels=input_dim * (2 ** i), 
+                                         out_channels=input_dim * (2 ** (i + 1)), 
                                          kernel_size=kernel_size, 
                                          padding=math.floor(kernel_size/2), 
                                          stride=1))
 
+        # Final convolutional layer feeding into latent space
+        self.layers.append(nn.Conv1d(in_channels=input_dim * (2 ** (i + 1)), 
+                                     out_channels=input_dim * (2 ** (i + 2)), 
+                                     kernel_size=kernel_size, 
+                                     padding=math.floor(kernel_size/2), 
+                                     stride=1))
+
         self.maxpool    = nn.MaxPool1d(kernel_size=self.pool_step, stride=self.pool_step)
         self.leaky_relu = nn.LeakyReLU()
         self.dropout    = nn.Dropout(0.05)
-        self.fcn        = nn.Linear(16, output_dim)
+        self.fcn        = nn.Linear(5, output_dim)
 
 
     def forward(self, x):
-        h_ = x
+        
+        # Get baseline samples and feed them to coordinate encoder
+        sampled_data = get_baseline_samples(x, k=self.all_samples, n=self.subset_samples, device=self.device)
+
+        h_ = sampled_data
 
         for layer in self.layers:
-            h_   = self.dropout(self.leaky_relu(self.maxpool(layer(h_))))
+            # Check if dimension of data would be reduced to less than the size of convolutional layer
+            if (h_.shape[2] / self.pool_step) < h_.shape[1]:
+                h_   = layer(h_)
+            else:
+                h_   = self.maxpool(layer(h_))
+
+            h_ = self.dropout(self.leaky_relu(h_))
 
         # Add final dense layer
-        return self.fcn(h_)
+        return self.fcn(h_), sampled_data
 
 
 class Encoder(nn.Module):
     
-    def __init__(self, input_dim, latent_dim, kernel_size, num_layers, pool_step, batch_size, device):
+    def __init__(self, input_dim, kernel_size, num_layers, pool_step, batch_size, device):
         super(Encoder, self).__init__()
 
         self.device = device
 
         self.input_dim   = input_dim
-        self.latent_dim  = latent_dim
         self.pool_step   = pool_step
         self.num_layers  = num_layers
         self.layers      = nn.ModuleList()
@@ -107,7 +143,7 @@ class Encoder(nn.Module):
 
         # Final convolutional layer feeding into latent space
         self.layers.append(nn.Conv1d(in_channels=input_dim * (2 ** (i + 1)), 
-                                     out_channels=latent_dim, 
+                                     out_channels=input_dim, 
                                      kernel_size=kernel_size, 
                                      padding=math.floor(kernel_size/2), 
                                      stride=1))
@@ -128,7 +164,7 @@ class Encoder(nn.Module):
                 h_, indices   = self.maxpool(layer(h_))
                 maxpool_indices.append(indices)
 
-            h_            = self.dropout(self.leaky_relu(h_))
+            h_ = self.dropout(self.leaky_relu(h_))
 
         return h_, maxpool_indices
 
@@ -194,12 +230,13 @@ class Decoder(nn.Module):
     
 
 class CoordinateVAEModel(nn.Module):
-    def __init__(self, encoder, decoder, coordinate_encoder):
+    def __init__(self, encoder, decoder, coordinate_encoder, device):
         super(CoordinateVAEModel, self).__init__()
         # self.CoordinateEncoder = CoordinateEncoder
         self.encoder = encoder
         self.decoder = decoder
         self.coordinate_encoder = coordinate_encoder
+        self.device = device
 
         self.N = torch.distributions.Normal(0, 1)
         self.N.loc = self.N.loc.cuda() # hack to get sampling on the GPU
@@ -213,7 +250,8 @@ class CoordinateVAEModel(nn.Module):
     def forward(self, x):
         # Get logits from encoder
         q_y, maxpool_indices = self.encoder(x)
-        coord_encoding = self.coordinate_encoder(x)
+
+        coord_encoding, _ = self.coordinate_encoder(x)
 
         # Gumbel-Softmax activation on the latent space
         self.tau = 2*math.exp(-0.0003*self.epoch)
@@ -225,12 +263,12 @@ class CoordinateVAEModel(nn.Module):
         # z = gumbel_softmax(latent_dim, categorical_dim, q_y, self.tau, hard=True)
         z = F.gumbel_softmax(q_y, tau=self.tau, hard=True)
 
-        # Concatenate sample of coordinate encoding
-        p = torch.tensor(torch.ones(coord_encoding.shape[1]) / coord_encoding.shape[1])
-        idx = p.multinomial(num_samples=10, replacement=False)
-        z_coord = coord_encoding[:, idx, :]
+        # # Concatenate sample of coordinate encoding
+        # p = torch.tensor(torch.ones(coord_encoding.shape[1]) / coord_encoding.shape[1])
+        # idx = p.multinomial(num_samples=10, replacement=False)
+        # z_coord = coord_encoding[:, idx, :]
 
-        z = torch.concat((z, z_coord), dim=1)
+        z = torch.concat((z, coord_encoding), dim=1)
         
         # Get output from decoder
         # return self.Decoder(z), F.softmax(q_y, dim=-1).reshape(*q.size()), categorical_dim

@@ -5,6 +5,7 @@ import random
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 from scipy import signal
+from typing import Tuple
 
 
 def bandpass_filter(data, freqs=[100, 5e3], fs=100e3, order=4):
@@ -15,6 +16,13 @@ def bandpass_filter(data, freqs=[100, 5e3], fs=100e3, order=4):
     data_filt = signal.filtfilt(b, a, data, axis=0)
 
     return data_filt
+
+
+def calculate_cross_correlation(signal1, signal2):
+    """
+    Calculate the cross correlation between two signals
+    """
+    return np.corrcoef(signal1, signal2)
 
 
 def extract_window(data, fs=100e3, start=0, win_length=0.008):
@@ -76,8 +84,8 @@ def generate_datasets(data, bp_data, fs=100e3, num_channels=9, win_length=0.008)
 
         # Remove artefacts and rescale to [-1, 1]
         channel_data = minmax_scaling(remove_artefacts(channel_data))
-        channel_data_wide_filt = bandpass_filter(channel_data, freqs=[50, 49.9e3])
-        channel_data_narrow_filt = bandpass_filter(channel_data, freqs=[100, 5e3])
+        channel_data_wide_filt = bandpass_filter(channel_data, freqs=[500, 49.9e3])
+        channel_data_narrow_filt = bandpass_filter(channel_data, freqs=[250, 10e3])
 
         for search_index in range(0, len(channel_data), int(win_length*fs)):
 
@@ -119,7 +127,9 @@ def prepare_n2n_data(noisy_inputs, filtered_data, bp_data, fs=100e3, num_chs=9, 
     for data_idx in range(len(filtered_data)):
         for ch in range(num_chs):
             data = filtered_data[data_idx, ch, :, 0]
-            noisy_targets[data_idx, ch, :, 0] = data + np.random.normal(0, 0.1, len(data))
+            # noisy_targets[data_idx, ch, :, 0] = data + np.random.normal(0, 0.1, len(data))
+            # NOT ADDING NOISE for now, to see how it'll go
+            noisy_targets[data_idx, ch, :, 0] = data
 
     # Create hold-out test set
     n2n_X_train, n2n_X_test, n2n_y_train, n2n_y_test = train_test_split(noisy_inputs, noisy_targets, test_size=0.2, shuffle=False)
@@ -164,7 +174,7 @@ def remove_artefacts(data):
 
     # Then correct artefacts
     channel_mean = np.mean(data)
-    limit = 3 * np.std(data)
+    limit = 2 * np.std(data)
 
     data[data > limit] = channel_mean
     data[data < -limit] = channel_mean
@@ -207,7 +217,7 @@ def plot_all_channels(data, filt=False, fs=100e3, lims=np.asarray([0.649, 0.656]
         y = remove_artefacts(y)
 
         if filt:
-            y = bandpass_filter(y, freqs=[100, 10e3], fs=fs, order=4)
+            y = bandpass_filter(y, freqs=[250, 10e3], fs=fs, order=4)
 
         if len(lims) > 0:
             y = y[lims[0]:lims[1]]
@@ -219,3 +229,57 @@ def plot_all_channels(data, filt=False, fs=100e3, lims=np.asarray([0.649, 0.656]
         offset += 10  # Max amplitude, peak-to-peak
 
     fig.show()
+
+
+def vsr(data, fs, du, v_range, repeat, filt=True, chs_flipped=False, inv_polarity=False) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """ 
+    Velocity-selective recording (VSR) in the frequency domain with delay-and-add (B. W. Metcalfe, 2018)
+    """
+    print(f"Computing delay-and-add for repeat {repeat}...")
+
+    data = data[:, ::-1]
+    
+    # Number of velocities
+    nv = len(v_range)
+
+    # Get the length of the recordings and the number of channels
+    nt, nu = data.shape
+        
+    # Frequency axis
+    f = (np.arange(-nt/2, nt/2) / nt) * fs
+    
+    # Generate element positions
+    u = np.arange(0, nu) * du
+    urep = np.tile(u, [nt, 1])
+        
+    dft = signal.fft(data.T).T
+    s = 1 / v_range
+
+    im = np.zeros((len(data), len(v_range)), dtype=complex)
+
+    for n in range(0, nv):
+        delays = urep * s[n]
+
+        # Delay
+        delayed_data = np.exp(-1j * 2 * np.pi * np.tile(f.T, [nu, 1]).T * delays)
+        shifted_fft = signal.fftshift(dft, 0)
+        imn = signal.ifft(signal.ifftshift(shifted_fft * delayed_data, 0), axis=0)
+
+        im[:, n] = np.sum(imn.T, axis=0)
+
+    im = abs(im)
+
+    # Now find the largest values for each delay
+    samples = len(data)
+    steps = len(v_range)
+
+    largest = np.zeros(steps)
+    smallest = np.zeros(steps)
+
+    for i in range(steps):
+        largest[i] = max(im[0:samples, i])
+        smallest[i] = abs(min(im[0:samples, i]))
+
+    print(f"Delay-and-add complete. (repeat {repeat})")
+
+    return v_range, im, largest, smallest
