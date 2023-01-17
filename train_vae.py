@@ -35,7 +35,7 @@ wandb.init(project="PNS Denoising",
 
 config = wandb.config
 
-# Load vagus dataset
+# Load vagus dataset, using filtered data from Noise2Noise as inputs (see training loop later)
 # train_dataset = VagusDataset(train=True)
 # test_dataset  = VagusDataset(train=False)
 train_dataset = VagusDatasetN2N(stage="train")
@@ -103,16 +103,16 @@ model.train()
 best_loss = 99999.0
 best_loss_epoch = 0
 kld_weight = 0.5
-kld_rate = 0 # TODO: Change this to rate of increase as per:
+kld_rate = 0 # TODO: Could change this to rate of increase as per:
                     # https://arxiv.org/pdf/1511.06349.pdf
-# kld_tracked = []
-# kld_w_tracked = []
 
 for epoch in range(config.epochs):
     overall_loss = 0
     # TODO: Check if epoch should be zero-indexed or not - doesn't seem to make a difference?
     model.epoch = epoch
 
+    # (_, x) since N2N data has raw signal and filtered signal, so for VAE only using filtered
+    # signal as the input
     for batch_idx, (_, x) in enumerate(train_dataloader):
         x = x.to(device).float()
 
@@ -120,9 +120,6 @@ for epoch in range(config.epochs):
 
         x_hat = model(x)
         loss, kld = loss_function(x, x_hat, kld_weight=kld_weight)
-
-        # kld_tracked.append(kld.detach().cpu())
-        # kld_w_tracked.append(kld_weight)
         
         overall_loss += loss.item() * x.size(0)
         
@@ -151,8 +148,6 @@ torch.save(model.state_dict(), PATH)
 
 model = best_model
 model.training = False
-
-# TODO: TEST ON SAME DATA AS NOISE2NOISE
 
 # Inference
 model.eval()

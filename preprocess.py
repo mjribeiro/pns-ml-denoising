@@ -44,6 +44,7 @@ n2n_X_train, n2n_X_val, n2n_X_test, n2n_y_train, n2n_y_val, n2n_y_test = prepare
                                                                                           filtered_data=vagus_data_filt_narrow, 
                                                                                           bp_data=blood_pressure)
 
+# ----- SAVE DATASET TO BE USED IN ML
 np.save(f'./data/Metcalfe-2014/n2n_X_train.npy', n2n_X_train)
 np.save(f'./data/Metcalfe-2014/n2n_X_val.npy', n2n_X_val)
 np.save(f'./data/Metcalfe-2014/n2n_X_test.npy', n2n_X_test)
@@ -51,18 +52,18 @@ np.save(f'./data/Metcalfe-2014/n2n_y_train.npy', n2n_y_train)
 np.save(f'./data/Metcalfe-2014/n2n_y_val.npy', n2n_y_val)
 np.save(f'./data/Metcalfe-2014/n2n_y_test.npy', n2n_y_test)
 
-# ----- SAVE DATASET TO BE USED IN ML
-vagus_train_raw, vagus_test_raw                 = train_test_split(vagus_data_raw, test_size=0.2, shuffle=False)
-vagus_train_filt_wide, vagus_test_filt_wide     = train_test_split(vagus_data_filt_wide, test_size=0.2, shuffle=False)
-vagus_train_filt_narrow, vagus_test_filt_narrow = train_test_split(vagus_data_filt_narrow, test_size=0.2, shuffle=False)
+# Older train/test splits, not currently being used
+# vagus_train_raw, vagus_test_raw                 = train_test_split(vagus_data_raw, test_size=0.2, shuffle=False)
+# vagus_train_filt_wide, vagus_test_filt_wide     = train_test_split(vagus_data_filt_wide, test_size=0.2, shuffle=False)
+# vagus_train_filt_narrow, vagus_test_filt_narrow = train_test_split(vagus_data_filt_narrow, test_size=0.2, shuffle=False)
 
-print("Saving datasets...")
-# Save as numpy arrays?
-np.save(f'./data/Metcalfe-2014/vagus_train_raw_{int(win_length*fs)}.npy', vagus_train_raw)
-np.save(f'./data/Metcalfe-2014/vagus_test_raw_{int(win_length*fs)}.npy', vagus_test_raw)
+# print("Saving datasets...")
+# # Save as numpy arrays?
+# np.save(f'./data/Metcalfe-2014/vagus_train_raw_{int(win_length*fs)}.npy', vagus_train_raw)
+# np.save(f'./data/Metcalfe-2014/vagus_test_raw_{int(win_length*fs)}.npy', vagus_test_raw)
 
-np.save(f'./data/Metcalfe-2014/vagus_train_filt_wide_{int(win_length*fs)}.npy', vagus_train_filt_wide)
-np.save(f'./data/Metcalfe-2014/vagus_test_filt_wide_{int(win_length*fs)}.npy', vagus_test_filt_wide)
+# np.save(f'./data/Metcalfe-2014/vagus_train_filt_wide_{int(win_length*fs)}.npy', vagus_train_filt_wide)
+# np.save(f'./data/Metcalfe-2014/vagus_test_filt_wide_{int(win_length*fs)}.npy', vagus_test_filt_wide)
 
-np.save(f'./data/Metcalfe-2014/vagus_train_filt_narrow_{int(win_length*fs)}.npy', vagus_train_filt_narrow)
-np.save(f'./data/Metcalfe-2014/vagus_test_filt_narrow_{int(win_length*fs)}.npy', vagus_test_filt_narrow)
+# np.save(f'./data/Metcalfe-2014/vagus_train_filt_narrow_{int(win_length*fs)}.npy', vagus_train_filt_narrow)
+# np.save(f'./data/Metcalfe-2014/vagus_test_filt_narrow_{int(win_length*fs)}.npy', vagus_test_filt_narrow)

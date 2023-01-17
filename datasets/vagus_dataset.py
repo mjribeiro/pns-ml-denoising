@@ -2,6 +2,8 @@ import numpy as np
 import torch
 
 
+# self.data is supposed to be [window, num_channels, samples, type of recording], so 
+# last index is 0 if ENG recording or 1 if blood pressure recording
 
 class VagusDataset(torch.utils.data.Dataset):
     def __init__(self, train) -> None:

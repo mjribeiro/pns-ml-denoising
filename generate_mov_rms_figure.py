@@ -47,7 +47,7 @@ n2n_noisy_inputs_ch = np.load(f"./results/n2n_noisy_input_ch{ch_num}.npy")
 n2n_noisy_targets_ch = np.load(f"./results/n2n_noisy_labels_ch{ch_num}.npy")
 n2n_reconstr_ch = np.load(f"./results/n2n_reconstr_ch{ch_num}.npy")
 
-
+# --- GENERATING PLOTS
 # Make the following plots:
 # 1) Original data and results with bandpass filtering
 # 2) CVAE results overlaid on 50% opacity original
@@ -165,13 +165,11 @@ ax7.set_xlabel("Time (s)")
 
 plt.savefig("./plots/mov_rms.png", bbox_inches='tight')
 
-# TO TRY
-# - envelopes for raw data and bandpass filtered
-# - VAE with bandpass filtered data (as per original paper)
-# - VAE output as Noise2Noise targets
 
-# - Multiple ch_nums as multiple Noise2Noise pairs (different noise on each ch_num, maybe use adjacent pairs but look at amplitudes in spontaneous data first, adjust for time difference)
+# --- EXTRACTING METRICS
 
+# CROSS-CORRELATION
+# Normalise both BP envelope and RMS data before performing cross correlation
 scaler = StandardScaler()
 bp_envelope_norm = scaler.fit_transform(bp_envelope.reshape(-1, 1))
 
@@ -187,6 +185,7 @@ print("Bandpass x-correlation: ", calculate_cross_correlation(bp_envelope_norm.r
 print("VAE x-correlation: ", calculate_cross_correlation(bp_envelope_norm.ravel(), cvae_x_corr)[0,1])
 print("N2N x-correlation: ", calculate_cross_correlation(bp_envelope_norm.ravel(), n2n_x_corr)[0,1])
 
+# CHECKING RESPIRATORY RATE
 # Find peaks in envelopes, see which matches the right frequency - 0.25 Hz
 respiratory_freq = 0.25
 bandpass_rms_peaks, _ = find_peaks(bandpass_rms.to_numpy().ravel(), distance=3*fs)
@@ -206,7 +205,7 @@ print("Bandpass percent diff in resp. rate: ", bandpass_freq_diff)
 print("VAE percent diff in resp. rate: ", cvae_freq_diff)
 print("N2N percent diff in resp. rate: ", n2n_freq_diff)
 
-# Try and work out an approximate SNR?
+# CALCULATE SNR (APPROXIMATE)
 # Take section of baseline as approximate background noise, inspect plots manually first to see where these sections are
 num_samples = 120
 bandpass_start = int(5.28 * fs)

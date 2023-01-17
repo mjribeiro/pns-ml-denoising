@@ -3,8 +3,6 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-# TODO: Implement skips and concatenation
-
 class Noise2NoiseEncoder(nn.Module):
     def __init__(self, num_channels, kernel_size=3, pool_step=2) -> None:
         super(Noise2NoiseEncoder, self).__init__()

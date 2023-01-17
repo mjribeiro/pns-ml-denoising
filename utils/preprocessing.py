@@ -128,14 +128,14 @@ def prepare_n2n_data(noisy_inputs, filtered_data, bp_data, fs=100e3, num_chs=9, 
         for ch in range(num_chs):
             data = filtered_data[data_idx, ch, :, 0]
             # noisy_targets[data_idx, ch, :, 0] = data + np.random.normal(0, 0.1, len(data))
-            # NOT ADDING NOISE for now, to see how it'll go
+            # NOT ADDING NOISE anymore
             noisy_targets[data_idx, ch, :, 0] = data
 
     # Create hold-out test set
     n2n_X_train, n2n_X_test, n2n_y_train, n2n_y_test = train_test_split(noisy_inputs, noisy_targets, test_size=0.2, shuffle=False)
     n2n_X_train, n2n_X_val, n2n_y_train, n2n_y_val = train_test_split(noisy_inputs, noisy_targets, test_size=0.1, shuffle=False)
 
-    # Create new input and target variables with point swaps
+    # Create new input and target variables with point swaps (Data augmentation following Calvarons 2021 paper)
     noisy_inputs_arr  = np.zeros((len(n2n_X_train) * 2, num_chs, data_len, 2))
     noisy_targets_arr = np.zeros((len(n2n_y_train) * 2, num_chs, data_len, 2))
 
@@ -154,8 +154,6 @@ def prepare_n2n_data(noisy_inputs, filtered_data, bp_data, fs=100e3, num_chs=9, 
             # Store in relevant arrays
             noisy_inputs_arr[idx, ch, :, :] = input[ch, rand_idx]
             noisy_targets_arr[idx, ch, :, :] = target[ch, rand_idx]
-
-    # TODO: Double amount of data by showing targets as inputs and inputs as targets too
 
     print("Finished preparing data for Noise2Noise model...")
     n2n_X_train = noisy_inputs_arr
@@ -234,6 +232,9 @@ def plot_all_channels(data, filt=False, fs=100e3, lims=np.asarray([0.649, 0.656]
 def vsr(data, fs, du, v_range, repeat, filt=True, chs_flipped=False, inv_polarity=False) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     """ 
     Velocity-selective recording (VSR) in the frequency domain with delay-and-add (B. W. Metcalfe, 2018)
+
+    --> Not being used at the moment! <--
+
     """
     print(f"Computing delay-and-add for repeat {repeat}...")
 

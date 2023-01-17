@@ -7,6 +7,10 @@ no_cuda = False
 is_cuda = not no_cuda and torch.cuda.is_available()
 
 
+
+# Manual implementation of Gumbel-Softmax when I was testing things, I found results using F.gumbel_softmax()
+# were equivalent though, so haven't used these three functions in the end
+
 # Source: https://neptune.ai/blog/gumbel-softmax-loss-function-guide-how-to-implement-it-in-pytorch
 def sample_gumbel(shape, eps=1e-20):
     U = torch.rand(shape)
@@ -44,6 +48,7 @@ def gumbel_softmax(latent_dim, categorical_dim, logits, temperature, hard=False)
 
     return y_hard.view(-1, latent_dim, categorical_dim)
 
+# VAE code starts here...
 
 # Based on: https://github.com/Jackson-Kang/Pytorch-VAE-tutorial/blob/master/01_Variational_AutoEncoder.ipynb
 class CoordinateEncoder(nn.Module):
@@ -90,11 +95,7 @@ class Encoder(nn.Module):
         for layer in self.layers:
             h_   = self.dropout(self.leaky_relu(self.maxpool(layer(h_))))
 
-        q = h_.view(h_.shape[0], self.latent_dim*h_.shape[2])
-
-        # I think this sort of "flattening" helps a bit with the onehot?
-        # h_ = h_.view(h_.shape[0], latent_size * data_length)
-        # return q, h_, self.latent_dim, h_.shape[2]
+        q = h_.view(h_.shape[0], self.latent_dim*h_.shape[2]) # not being used, so might delete
         return h_
 
 
@@ -118,6 +119,7 @@ class Decoder(nn.Module):
         out_channels.append(9)
 
         for i in range(self.num_layers):
+            # ConvTranspose equivalent to conv+upsample when using a stride>1?
             self.layers.append(nn.ConvTranspose1d(in_channels=in_channels[i], 
                                                   out_channels=out_channels[i], 
                                                   kernel_size=self.pool_step,
@@ -127,19 +129,10 @@ class Decoder(nn.Module):
         self.dropout    = nn.Dropout(0.05)
         self.leaky_relu = nn.LeakyReLU()
         self.tanh       = nn.Tanh()
-
-        # TODO: See if these fully connected layers are needed to getting right input shape again
-        # self.fc_up = nn.Linear(latent_dim, int(output_dim/(2**num_layers))*latent_dim)
         
 
     def forward(self, x):
         h = x
-        
-        # FC layer to get original downsampled dims
-        # h = self.fc_up(h)
-
-        # Reshape for conv1d
-        # h = h.reshape(-1, self.latent_dim, int(self.output_dim/(2**self.num_layers)))
 
         for layer_idx in range(self.num_layers-1):
             h   = self.leaky_relu(self.dropout(self.layers[layer_idx](h)))
@@ -153,6 +146,7 @@ class CoordinateVAEModel(nn.Module):
         self.Encoder = Encoder
         self.Decoder = Decoder
 
+        # This block is leftover code from the manual Gumbel-Softmax implementation, I think...
         self.N = torch.distributions.Normal(0, 1)
         self.N.loc = self.N.loc.cuda() # hack to get sampling on the GPU
         self.N.scale = self.N.scale.cuda()
