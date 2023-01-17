@@ -192,7 +192,8 @@ plt.ylabel("Amplitude (AU, normalised)")
 plt.rcParams.update({'font.size': 22})
 plt.show()
 
-np.save("./results/cvae_noisy_input_ch1.npy", xs[:, 0, :].flatten())
-np.save("./results/cvae_reconstr_ch1.npy", x_hats[:, 0, :].flatten())
+for i in range(9):
+    np.save(f"./results/cvae_noisy_input_ch{i+1}.npy", xs[:, i, :].flatten())
+    np.save(f"./results/cvae_reconstr_ch{i+1}.npy", x_hats[:, i, :].flatten())
 
 wandb.finish()

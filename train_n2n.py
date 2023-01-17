@@ -37,7 +37,7 @@ def train():
     wandb.init(project="PNS Denoising",
             config = {
                 "learning_rate": 0.00001,
-                "epochs": 170,
+                "epochs": 200,
                 "batch_size": 1024,
                 "kernel_size": 3})
 
@@ -190,9 +190,10 @@ def train():
 
     wandb.log({"plot": fig})
 
-    np.save("./results/n2n_noisy_input_ch1.npy", xs[:, 0, :].flatten())
-    np.save("./results/n2n_noisy_labels_ch1.npy", xs_cleaner[:, 0, :].flatten())
-    np.save("./results/n2n_reconstr_ch1.npy", x_hats[:, 0, :].flatten())
+    for i in range(9):
+        np.save(f"./results/n2n_noisy_input_ch{i+1}.npy", xs[:, i, :].flatten())
+        np.save(f"./results/n2n_noisy_labels_ch{i+1}.npy", xs_cleaner[:, i, :].flatten())
+        np.save(f"./results/n2n_reconstr_ch{i+1}.npy", x_hats[:, i, :].flatten())
 
     wandb.finish()
 
