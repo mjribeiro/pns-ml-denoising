@@ -14,7 +14,7 @@ from torch.utils.data import DataLoader
 import matplotlib.pyplot as plt
 
 # Local imports
-from models.cvae_old import *
+from models.vae import *
 from datasets.vagus_dataset import VagusDataset, VagusDatasetN2N
 
 
