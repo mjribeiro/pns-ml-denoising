@@ -205,7 +205,7 @@ print("Bandpass percent diff in resp. rate: ", bandpass_freq_diff)
 print("VAE percent diff in resp. rate: ", cvae_freq_diff)
 print("N2N percent diff in resp. rate: ", n2n_freq_diff)
 
-# CALCULATE SNR (APPROXIMATE)
+# CALCULATE SNR (APPROXIMATE)#
 # Take section of baseline as approximate background noise, inspect plots manually first to see where these sections are
 num_samples = 120
 bandpass_start = int(5.28 * fs)

@@ -80,10 +80,14 @@ def generate_datasets(data, bp_data, fs=100e3, num_channels=9, win_length=0.008)
         # Standardise mean and standard dev
         scaler = StandardScaler()
 
+        # -------- Trying to make input data noisier 
+        # channel_data += np.random.normal(0, 0.2, len(channel_data))
+
         channel_data = scaler.fit_transform(np.asarray(channel_data).reshape(-1, 1))
 
         # Remove artefacts and rescale to [-1, 1]
-        channel_data = minmax_scaling(remove_artefacts(channel_data))
+        channel_data = minmax_scaling(remove_artefacts(channel_data, threshold=2))
+        # channel_data = minmax_scaling(channel_data)
         channel_data_wide_filt = bandpass_filter(channel_data, freqs=[500, 49.9e3])
         channel_data_narrow_filt = bandpass_filter(channel_data, freqs=[250, 10e3])
 
@@ -122,19 +126,29 @@ def prepare_n2n_data(noisy_inputs, filtered_data, bp_data, fs=100e3, num_chs=9, 
     print("Started preparing data for Noise2Noise model...")
     
     # Add GWN to filtered data
+    # noisy_inputs_new = np.zeros_like(noisy_inputs)
     noisy_targets = np.zeros_like(filtered_data)
 
     for data_idx in range(len(filtered_data)):
         for ch in range(num_chs):
-            data = filtered_data[data_idx, ch, :, 0]
-            # noisy_targets[data_idx, ch, :, 0] = data + np.random.normal(0, 0.1, len(data))
-            # NOT ADDING NOISE anymore
-            noisy_targets[data_idx, ch, :, 0] = data
+            # data_noisy = noisy_inputs[data_idx, ch, :, 0]
+            data_filt = filtered_data[data_idx, ch, :, 0]
+
+            # Trying making inputs noisier
+            # noisy_inputs_new[data_idx, ch, :, 0] = data_noisy + np.random.normal(0, 0.2, len(data_noisy))
+
+            # Not adding noise to filtered data
+            noisy_targets[data_idx, ch, :, 0] = data_filt
 
     # Create hold-out test set
     n2n_X_train, n2n_X_test, n2n_y_train, n2n_y_test = train_test_split(noisy_inputs, noisy_targets, test_size=0.2, shuffle=False)
     n2n_X_train, n2n_X_val, n2n_y_train, n2n_y_val = train_test_split(noisy_inputs, noisy_targets, test_size=0.1, shuffle=False)
 
+    # # Remove spikes in train set, but not test set
+    # for window in range(n2n_X_train.shape[0]):
+    #     for ch in range(n2n_X_train.shape[1]):
+    #         n2n_X_train[window, ch, :, 0] = remove_artefacts(n2n_X_train[window, ch, :, 0], threshold=2)
+    
     # Create new input and target variables with point swaps (Data augmentation following Calvarons 2021 paper)
     noisy_inputs_arr  = np.zeros((len(n2n_X_train) * 2, num_chs, data_len, 2))
     noisy_targets_arr = np.zeros((len(n2n_y_train) * 2, num_chs, data_len, 2))
@@ -162,7 +176,7 @@ def prepare_n2n_data(noisy_inputs, filtered_data, bp_data, fs=100e3, num_chs=9, 
     return n2n_X_train, n2n_X_val, n2n_X_test, n2n_y_train, n2n_y_val, n2n_y_test
 
 
-def remove_artefacts(data):
+def remove_artefacts(data, threshold=2):
     """
     Remove 15 kHz noise in data and replace with mean of recording.
     """
@@ -172,7 +186,7 @@ def remove_artefacts(data):
 
     # Then correct artefacts
     channel_mean = np.mean(data)
-    limit = 2 * np.std(data)
+    limit = threshold * np.std(data)
 
     data[data > limit] = channel_mean
     data[data < -limit] = channel_mean

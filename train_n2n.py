@@ -37,7 +37,7 @@ def train():
     wandb.init(project="PNS Denoising",
             config = {
                 "learning_rate": 0.00001,
-                "epochs": 200,
+                "epochs": 500,
                 "batch_size": 1024,
                 "kernel_size": 3})
 
@@ -79,7 +79,7 @@ def train():
         model.cuda()
 
     # Get parameter count
-    # print(sum(p.numel() for p in model.parameters()))
+    print(sum(p.numel() for p in model.parameters()))
 
     # ----- TRAINING -----
     training_start_time = time.time()

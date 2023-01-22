@@ -11,8 +11,8 @@ class Noise2NoiseEncoder(nn.Module):
 
         # in_channels = [num_channels, 48, 48, 48, 48, 48, 48]
         # out_channels = [48, 48, 48, 48, 48, 48, 48]
-        in_channels = [num_channels, 8, 8, 8, 8, 8, 8]
-        out_channels = [8, 8, 8, 8, 8, 8, 8]
+        in_channels = [num_channels, 32, 32, 32, 32, 32, 32]
+        out_channels = [32, 32, 32, 32, 32, 32, 32]
         self.num_layers = len(out_channels)
         
         for i in range(self.num_layers):
@@ -49,8 +49,11 @@ class Noise2NoiseDecoder(nn.Module):
 
         # in_channels = [96, 96, 144, 96, 144, 96, 144, 96, 96+num_channels, 64, 32]
         # out_channels = [96, 96, 96, 96, 96, 96, 96, 96, 64, 32, num_channels]
-        in_channels = [16, 16, 24, 16, 24, 16, 24, 16, 16+num_channels, 32, 16]
-        out_channels = [16, 16, 16, 16, 16, 16, 16, 16, 32, 16, num_channels]
+        # in_channels = [16, 16, 24, 16, 24, 16, 24, 16, 16+num_channels, 32, 16]
+        # out_channels = [16, 16, 16, 16, 16, 16, 16, 16, 32, 16, num_channels]
+
+        in_channels = [64, 32, 64, 32, 64, 32, 64, 32, 32+num_channels, 64, 32]
+        out_channels = [32, 32, 32, 32, 32, 32, 32, 32, 64, 32, num_channels]
         self.num_layers = len(in_channels)
 
         for i in range(self.num_layers):

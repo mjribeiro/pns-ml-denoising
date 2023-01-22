@@ -160,6 +160,7 @@ with torch.no_grad():
     start_idx = 0
     end_idx = start_idx+config.batch_size
 
+    # Test on noisy data rather than BP filtered
     for batch_idx, (_, x) in enumerate(test_dataloader):
         x = x.to(device).float()
         model.training = False
