@@ -1,4 +1,4 @@
-import matplotlib.figure 
+import matplotlib.figure
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -19,7 +19,7 @@ from datasets.vagus_dataset import VagusDatasetN2N
 # Function definitions
 def rolling_rms(x, N):
     # Source: https://dsp.stackexchange.com/a/74822
-    return (pd.DataFrame(abs(x)**2).rolling(N).mean()) ** 0.5 
+    return (pd.DataFrame(abs(x)**2).rolling(N).mean()) ** 0.5
 
 def calculate_envelope_points(x):
     peak_idx, _ = find_peaks(x, prominence=0.5)
@@ -107,7 +107,8 @@ ax3.set_xlabel("Time (s)")
 # ax3.set_ylabel("Amplitude (norm.)")
 ax3.set_ylim([-1, 1])
 
-fig1.savefig("./plots/denoised.png", bbox_inches='tight')
+# fig1.savefig("./plots/denoised.png", bbox_inches='tight')
+# fig1.show()
 
 # 4) BP with envelope
 entire_bp_recording = test_dataset.load_bp_data(0, len(test_dataset))
@@ -117,6 +118,7 @@ time_full = np.arange(0, len(cvae_reconstr_ch)/fs, 1/fs)
 max_idx = len(time_full)
 
 ch1_bp_recording = entire_bp_recording[:, 0, :].flatten()
+# ch1_bp_recording = butter_lowpass_filter(ch1_bp_recording, 100, 100e3)
 
 peaks = calculate_envelope_points(ch1_bp_recording)
 peaks = list(filter(lambda x : x < max_idx, peaks))
@@ -150,20 +152,21 @@ N_CVAE = int(1000e-3 * fs) # 1000 ms in samples
 N_N2N = int(1000e-3 * fs) # 1000 ms in samples
 
 # 6) CVAE
-cvae_reconstr_ch_rms = rolling_rms(cvae_reconstr_ch, N_CVAE) 
+cvae_reconstr_ch_rms = rolling_rms(cvae_reconstr_ch, N_CVAE)
 ax6.plot(time_full, cvae_reconstr_ch_rms)
 ax6.set_xlim([-1.5, 21.5])
 ax6.set_xlabel("Time (s)")
 # ax6.set_ylabel("Amplitude (norm.)")
 
 # 7) N2N
-n2n_reconstr_ch_rms = rolling_rms(n2n_reconstr_ch, N_N2N) 
+n2n_reconstr_ch_rms = rolling_rms(n2n_reconstr_ch, N_N2N)
 ax7.plot(time_full, n2n_reconstr_ch_rms)
 ax7.set_xlim([-1.5, 21.5])
 ax7.set_xlabel("Time (s)")
 # ax7.set_ylabel("Amplitude (norm.)")
 
-plt.savefig("./plots/mov_rms.png", bbox_inches='tight')
+# plt.savefig("./plots/mov_rms.png", bbox_inches='tight')
+# plt.show()
 
 
 # --- EXTRACTING METRICS
@@ -181,9 +184,37 @@ bandpass_x_corr = resample(bandpass_rms_norm, len(bp_envelope_norm)).ravel()
 cvae_x_corr = resample(cvae_reconstr_ch1_rms_norm, len(bp_envelope_norm)).ravel()
 n2n_x_corr = resample(n2n_reconstr_ch1_rms_norm, len(bp_envelope_norm)).ravel()
 
-print("Bandpass x-correlation: ", calculate_cross_correlation(bp_envelope_norm.ravel(), bandpass_x_corr)[0,1])
-print("VAE x-correlation: ", calculate_cross_correlation(bp_envelope_norm.ravel(), cvae_x_corr)[0,1])
-print("N2N x-correlation: ", calculate_cross_correlation(bp_envelope_norm.ravel(), n2n_x_corr)[0,1])
+# ----- Extra plots for debugging -----
+# Blood pressure with envelope
+plt.figure()
+plt.plot(time_full, ch1_bp_recording[:max_idx])
+plt.plot(xnew, bp_envelope)
+plt.show()
+
+# Inputs to cross-correlation
+plt.figure()
+plt.plot(bp_envelope_norm, label="BP envelope", alpha=0.8)
+plt.plot(bandpass_x_corr, label="Bandpass", alpha=0.5)
+plt.plot(cvae_x_corr, label="VAE", alpha=0.5)
+plt.plot(n2n_x_corr, label="Noise2Noise", alpha=0.5)
+plt.legend()
+plt.show()
+
+# Entire test set ENG signal
+start_time_debug = int(15.8 * fs)
+end_time_debug = int(start_time_debug + (1.2 * fs))
+
+plt.figure()
+plt.plot(time_full[start_time_debug:end_time_debug], n2n_noisy_inputs_ch[start_time_debug:end_time_debug], label="Noisy data (N2N only)", alpha=0.5)
+plt.plot(time_full[start_time_debug:end_time_debug], n2n_noisy_targets_ch[start_time_debug:end_time_debug], label="BP-filtered data (N2N and VAE)", alpha=0.5)
+plt.plot(time_full[start_time_debug:end_time_debug], cvae_reconstr_ch[start_time_debug:end_time_debug], label="VAE reconstr", alpha=0.5)
+plt.plot(time_full[start_time_debug:end_time_debug], n2n_reconstr_ch[start_time_debug:end_time_debug], label="N2N reconstr", alpha=0.5)
+plt.legend()
+plt.show()
+
+print("Bandpass x-correlation: ", np.corrcoef(bp_envelope_norm.ravel(), bandpass_x_corr)[0,1])
+print("VAE x-correlation: ", np.corrcoef(bp_envelope_norm.ravel(), cvae_x_corr)[0,1])
+print("N2N x-correlation: ", np.corrcoef(bp_envelope_norm.ravel(), n2n_x_corr)[0,1])
 
 # CHECKING RESPIRATORY RATE
 # Find peaks in envelopes, see which matches the right frequency - 0.25 Hz
