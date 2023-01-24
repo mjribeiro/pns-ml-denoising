@@ -16,6 +16,7 @@ import matplotlib.pyplot as plt
 # Local imports
 from models.vae import *
 from datasets.vagus_dataset import VagusDataset, VagusDatasetN2N
+from utils.analysis import *
 
 
 # Address GPU memory issues (source: https://stackoverflow.com/a/66921450)
@@ -41,7 +42,7 @@ config = wandb.config
 train_dataset = VagusDatasetN2N(stage="train")
 test_dataset  = VagusDatasetN2N(stage="test")
 
-train_dataloader = DataLoader(train_dataset, batch_size=config.batch_size, shuffle=True)
+train_dataloader = DataLoader(train_dataset, batch_size=config.batch_size, shuffle=False)
 test_dataloader = DataLoader(test_dataset, batch_size=config.batch_size, shuffle=False, drop_last=True)
 
 # sample = train_dataset.__getitem__(0)
@@ -72,11 +73,28 @@ model = CoordinateVAEModel(Encoder=encoder,
 mse_loss = nn.MSELoss()
 kld_loss = nn.KLDivLoss()
 
-def loss_function(x, x_hat, kld_weight):
+def loss_function(x, x_hat, bp, kld_weight, device):
+    # Flatten input data, predictions, and blood pressure window per channel (since dataset is unshuffled)
+    x_flat = torch.flatten(torch.swapaxes(x, 0, 1), start_dim=1)
+    x_hat_flat = torch.flatten(torch.swapaxes(x_hat, 0, 1), start_dim=1)
+    bp_flat = torch.flatten(torch.swapaxes(bp, 0, 1), start_dim=1)
 
-    MSE = mse_loss(x, x_hat)
-    KLD = kld_loss(F.log_softmax(x, -1), F.softmax(x_hat, -1))
+    # Extract respiratory envelope from blood pressure data
+    # Use channel 1 only since same for all channels
+    bp_envelope = extract_resp_envelope(bp_flat[0, :], device=device)
 
+    # Get moving RMS plots
+    bp_envelope, x_moving_rms = compute_moving_rms(x_flat, bp_envelope, device=device)
+    bp_envelope, x_hat_moving_rms = compute_moving_rms(x_hat_flat, bp_envelope, device=device)
+
+    # MSE = mse_loss(x, x_hat)
+    # KLD = kld_loss(F.log_softmax(x, -1), F.softmax(x_hat, -1))
+
+    # TODO: Check if it makes sense to do KLD with moving RMS plots
+    MSE = mse_loss(x_moving_rms, x_hat_moving_rms)
+    KLD = kld_loss(F.log_softmax(x_moving_rms, -1), F.softmax(x_hat_moving_rms, -1))
+
+    # Assign appropriate weightings
     MSE = (1 - kld_weight) * MSE
     KLD = kld_weight * KLD
     
@@ -113,13 +131,13 @@ for epoch in range(config.epochs):
 
     # (_, x) since N2N data has raw signal and filtered signal, so for VAE only using filtered
     # signal as the input
-    for batch_idx, (_, x) in enumerate(train_dataloader):
+    for batch_idx, (_, x, bp) in enumerate(train_dataloader):
         x = x.to(device).float()
 
         optimizer.zero_grad()
 
         x_hat = model(x)
-        loss, kld = loss_function(x, x_hat, kld_weight=kld_weight)
+        loss, kld = loss_function(x, x_hat, bp, kld_weight=kld_weight, device=device)
         
         overall_loss += loss.item() * x.size(0)
         
@@ -161,7 +179,7 @@ with torch.no_grad():
     end_idx = start_idx+config.batch_size
 
     # Test on noisy data rather than BP filtered
-    for batch_idx, (_, x) in enumerate(test_dataloader):
+    for batch_idx, (_, x, bp) in enumerate(test_dataloader):
         x = x.to(device).float()
         model.training = False
         

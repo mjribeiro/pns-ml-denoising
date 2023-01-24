@@ -41,7 +41,7 @@ class VagusDatasetN2N(torch.utils.data.Dataset):
 
 
     def __getitem__(self, idx: int):
-        return torch.from_numpy(self.data[idx, :, :, 0]), torch.from_numpy(self.targets[idx, :, :, 0])
+        return torch.from_numpy(self.data[idx, :, :, 0]), torch.from_numpy(self.targets[idx, :, :, 0]), self.data[idx, :, :, 1]
 
     
     def __len__(self) -> int:
