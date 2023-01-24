@@ -9,7 +9,9 @@ from scipy.signal import butter, filtfilt, find_peaks, resample
 from sklearn.preprocessing import StandardScaler
 
 # User-defined parameters
-ch_num = 1
+num_models = 3
+select_ch = 0
+num_chs = 9
 fs = 100e3
 
 # Local imports
@@ -39,18 +41,51 @@ def butter_lowpass_filter(data, cutoff, fs, order=5):
 test_dataset = VagusDatasetN2N(stage="test")
 
 # Load coordinate vae results
-cvae_noisy_inputs_ch = np.load(f"./results/cvae_noisy_input_ch{ch_num}.npy")
-cvae_reconstr_ch = np.load(f"./results/cvae_reconstr_ch{ch_num}.npy")
+print("Starting to load all channel data...")
+for ch in range(num_chs):
+    # Initialise channel data arrays on first input since data length not known a priori
+    if ch == 0:
+        # Initialise VAE arrays
+        vae_noisy_inputs_ch = np.load(f"./results/cvae_noisy_input_ch{ch+1}.npy")
+        vae_reconstr_ch     = np.load(f"./results/cvae_reconstr_ch{ch+1}.npy")
 
-# Load n2n results
-n2n_noisy_inputs_ch = np.load(f"./results/n2n_noisy_input_ch{ch_num}.npy")
-n2n_noisy_targets_ch = np.load(f"./results/n2n_noisy_labels_ch{ch_num}.npy")
-n2n_reconstr_ch = np.load(f"./results/n2n_reconstr_ch{ch_num}.npy")
+        vae_noisy_inputs = np.zeros((len(vae_noisy_inputs_ch), num_chs))
+        vae_reconstr     = np.zeros((len(vae_reconstr_ch), num_chs))
+
+        # Assign first set of data
+        vae_noisy_inputs[:, ch] = vae_noisy_inputs_ch
+        vae_reconstr[:, ch]     = vae_reconstr_ch
+
+        # Initialise N2N arrays
+        n2n_noisy_inputs_ch  = np.load(f"./results/n2n_noisy_input_ch{ch+1}.npy")
+        n2n_noisy_targets_ch = np.load(f"./results/n2n_noisy_labels_ch{ch+1}.npy")
+        n2n_reconstr_ch      = np.load(f"./results/n2n_reconstr_ch{ch+1}.npy")
+
+        n2n_noisy_inputs  = np.zeros((len(n2n_noisy_inputs_ch), num_chs))
+        n2n_noisy_targets = np.zeros((len(n2n_noisy_targets_ch), num_chs))
+        n2n_reconstr      = np.zeros((len(n2n_reconstr_ch), num_chs))
+
+        # Assign first set of data
+        n2n_noisy_inputs[:, ch]  = n2n_noisy_inputs_ch
+        n2n_noisy_targets[:, ch] = n2n_noisy_targets_ch
+        n2n_reconstr[:, ch]      = n2n_reconstr_ch
+
+    else:
+        # VAE data
+        vae_noisy_inputs[:, ch] = np.load(f"./results/cvae_noisy_input_ch{ch+1}.npy")
+        vae_reconstr[:, ch]     = np.load(f"./results/cvae_reconstr_ch{ch+1}.npy")
+
+        # N2N data
+        n2n_noisy_inputs[:, ch]  = np.load(f"./results/n2n_noisy_input_ch{ch+1}.npy")
+        n2n_noisy_targets[:, ch] = np.load(f"./results/n2n_noisy_labels_ch{ch+1}.npy")
+        n2n_reconstr[:, ch]      = np.load(f"./results/n2n_reconstr_ch{ch+1}.npy")
+
+print("Finished loading all channel data.\n")
 
 # --- GENERATING PLOTS
 # Make the following plots:
 # 1) Original data and results with bandpass filtering
-# 2) CVAE results overlaid on 50% opacity original
+# 2) VAE results overlaid on 50% opacity original
 # 3) N2N results overlaid on 50% opacity original
 
 # On a new plot:
@@ -74,18 +109,18 @@ end_factor = 5
 zoom_start = start_factor
 zoom_end = 1024 * end_factor
 
-zoom_cvae_noisy = cvae_noisy_inputs_ch[zoom_start:zoom_end]
-zoom_cvae_reconstr = cvae_reconstr_ch[zoom_start:zoom_end]
+zoom_vae_noisy = vae_noisy_inputs[zoom_start:zoom_end, select_ch]
+zoom_vae_reconstr = vae_reconstr[zoom_start:zoom_end, select_ch]
 
-zoom_n2n_noisy_inputs = n2n_noisy_inputs_ch[zoom_start:zoom_end]
-zoom_n2n_noisy = n2n_noisy_targets_ch[zoom_start:zoom_end]
-zoom_n2n_reconstr = n2n_reconstr_ch[zoom_start:zoom_end]
+zoom_n2n_noisy_inputs = n2n_noisy_inputs[zoom_start:zoom_end, select_ch]
+zoom_n2n_noisy = n2n_noisy_targets[zoom_start:zoom_end, select_ch]
+zoom_n2n_reconstr = n2n_reconstr[zoom_start:zoom_end, select_ch]
 
-zoom_time = np.arange(0, len(zoom_cvae_noisy)/fs, 1/fs)
+zoom_time = np.arange(0, len(zoom_vae_noisy)/fs, 1/fs)
 
 # 1) Original plus bandpass filtered
 orig_filtered_win = bandpass_filter(zoom_n2n_noisy_inputs, [250, 10e3], fs)
-orig_filtered = bandpass_filter(n2n_noisy_inputs_ch, [250, 10e3], fs)
+orig_filtered = bandpass_filter(n2n_noisy_inputs[:, select_ch], [250, 10e3], fs)
 
 ax1.plot(zoom_time, zoom_n2n_noisy_inputs, alpha=0.3)
 ax1.plot(zoom_time, orig_filtered_win)
@@ -93,9 +128,9 @@ ax1.set_xlabel("Time (s)")
 ax1.set_ylabel("Amplitude (norm.)")
 ax1.set_ylim([-1, 1])
 
-# 2) CVAE data
-ax2.plot(zoom_time, zoom_cvae_noisy, alpha=0.3)
-ax2.plot(zoom_time, zoom_cvae_reconstr)
+# 2) VAE data
+ax2.plot(zoom_time, zoom_vae_noisy, alpha=0.3)
+ax2.plot(zoom_time, zoom_vae_reconstr)
 ax2.set_xlabel("Time (s)")
 # ax2.set_ylabel("Amplitude (norm.)")
 ax2.set_ylim([-1, 1])
@@ -114,7 +149,7 @@ ax3.set_ylim([-1, 1])
 entire_bp_recording = test_dataset.load_bp_data(0, len(test_dataset))
 
 # Use only data that was used for testing (drop_last=True when testing, so not entire dataset was used)
-time_full = np.arange(0, len(cvae_reconstr_ch)/fs, 1/fs)
+time_full = np.arange(0, len(vae_reconstr[:, select_ch])/fs, 1/fs)
 max_idx = len(time_full)
 
 ch1_bp_recording = entire_bp_recording[:, 0, :].flatten()
@@ -148,18 +183,18 @@ ax5.set_xlabel("Time (s)")
 # ax5.set_ylabel("Amplitude (norm.)")
 
 # 6) Moving RMS window of whole data
-N_CVAE = int(1000e-3 * fs) # 1000 ms in samples
+N_VAE = int(1000e-3 * fs) # 1000 ms in samples
 N_N2N = int(1000e-3 * fs) # 1000 ms in samples
 
-# 6) CVAE
-cvae_reconstr_ch_rms = rolling_rms(cvae_reconstr_ch, N_CVAE)
-ax6.plot(time_full, cvae_reconstr_ch_rms)
+# 6) VAE
+vae_reconstr_ch_rms = rolling_rms(vae_reconstr[:, select_ch], N_VAE)
+ax6.plot(time_full, vae_reconstr_ch_rms)
 ax6.set_xlim([-1.5, 21.5])
 ax6.set_xlabel("Time (s)")
 # ax6.set_ylabel("Amplitude (norm.)")
 
 # 7) N2N
-n2n_reconstr_ch_rms = rolling_rms(n2n_reconstr_ch, N_N2N)
+n2n_reconstr_ch_rms = rolling_rms(n2n_reconstr[:, select_ch], N_N2N)
 ax7.plot(time_full, n2n_reconstr_ch_rms)
 ax7.set_xlim([-1.5, 21.5])
 ax7.set_xlabel("Time (s)")
@@ -170,19 +205,84 @@ ax7.set_xlabel("Time (s)")
 
 
 # --- EXTRACTING METRICS
-
-# CROSS-CORRELATION
 # Normalise both BP envelope and RMS data before performing cross correlation
+
 scaler = StandardScaler()
 bp_envelope_norm = scaler.fit_transform(bp_envelope.reshape(-1, 1))
 
-bandpass_rms_norm = scaler.fit_transform(bandpass_rms.dropna().to_numpy().reshape(-1, 1))
-cvae_reconstr_ch1_rms_norm = scaler.fit_transform(cvae_reconstr_ch_rms.dropna().to_numpy().reshape(-1, 1))
-n2n_reconstr_ch1_rms_norm = scaler.fit_transform(n2n_reconstr_ch_rms.dropna().to_numpy().reshape(-1, 1))
+# Resampling to 1000 long signals to match blood pressure envelope length for cross-correlation
+resample_num = len(bp_envelope_norm)
+dx = (1 / fs) * len(bandpass_rms) / resample_num
+new_fs = 1 / dx
 
-bandpass_x_corr = resample(bandpass_rms_norm, len(bp_envelope_norm)).ravel()
-cvae_x_corr = resample(cvae_reconstr_ch1_rms_norm, len(bp_envelope_norm)).ravel()
-n2n_x_corr = resample(n2n_reconstr_ch1_rms_norm, len(bp_envelope_norm)).ravel()
+filter_cutoff = 15
+
+# Ground-truth respiratory rate
+respiratory_freq = 0.25
+
+cross_corr_waveforms = np.zeros((num_models, num_chs, resample_num))
+cross_corr_all_chs   = np.zeros((num_models, num_chs))
+respir_rate_all_chs  = np.zeros((num_models, num_chs))
+
+
+for ch in range(num_chs):
+    bandpass_data = bandpass_filter(n2n_noisy_inputs[:, ch], [250, 10e3], fs)
+
+    # Moving RMS window for specific channel
+    bandpass_rms     = rolling_rms(bandpass_data, N_BANDPASS)
+    vae_reconstr_rms = rolling_rms(vae_reconstr[:, ch], N_VAE)
+    n2n_reconstr_rms = rolling_rms(n2n_reconstr[:, ch], N_N2N)
+
+    # Standardise and drop NaNs from channel data
+    bandpass_rms_norm     = scaler.fit_transform(bandpass_rms.dropna().to_numpy().reshape(-1, 1))
+    vae_reconstr_rms_norm = scaler.fit_transform(vae_reconstr_rms.dropna().to_numpy().reshape(-1, 1))
+    n2n_reconstr_rms_norm = scaler.fit_transform(n2n_reconstr_rms.dropna().to_numpy().reshape(-1, 1))
+
+    # Normalised RMS windows
+    bandpass_rms_norm     = bandpass_rms_norm.flatten()
+    vae_reconstr_rms_norm = vae_reconstr_rms_norm.flatten()
+    n2n_reconstr_rms_norm = n2n_reconstr_rms_norm.flatten()
+
+    # Resample to same length and lowpass filter
+    bandpass_x_corr = butter_lowpass_filter(resample(bandpass_rms_norm, resample_num), filter_cutoff, resample_num)
+    vae_x_corr      = butter_lowpass_filter(resample(vae_reconstr_rms_norm, resample_num), filter_cutoff, resample_num)
+    n2n_x_corr      = butter_lowpass_filter(resample(n2n_reconstr_rms_norm, resample_num), filter_cutoff, resample_num)
+
+    # Store waveforms for plotting later
+    cross_corr_waveforms[0, ch, :] = bandpass_x_corr
+    cross_corr_waveforms[1, ch, :] = vae_x_corr
+    cross_corr_waveforms[2, ch, :] = n2n_x_corr
+
+    # CROSS-CORRELATION
+    cross_corr_all_chs[0, ch] = np.corrcoef(bp_envelope_norm.ravel(), bandpass_x_corr)[0,1]
+    cross_corr_all_chs[1, ch] = np.corrcoef(bp_envelope_norm.ravel(), vae_x_corr)[0,1]
+    cross_corr_all_chs[2, ch] = np.corrcoef(bp_envelope_norm.ravel(), n2n_x_corr)[0,1]
+
+    # CHECKING RESPIRATORY RATE
+    # Using same inputs as x-corr, so need to use modified fs since resampling took place
+    bandpass_rms_peaks, _ = find_peaks(bandpass_x_corr, prominence=0.8)
+    vae_rms_peaks, _      = find_peaks(vae_x_corr, prominence=0.8)
+    n2n_rms_peaks, _      = find_peaks(n2n_x_corr, prominence=0.8)
+
+    # Find mean spacing between peaks, return as frequency (1/ time differences) to compare with 0.25 Hz
+    bandpass_peak_spacing = np.mean( 1 / (np.diff(bandpass_rms_peaks) / new_fs))
+    vae_peak_spacing      = np.mean( 1 / (np.diff(vae_rms_peaks) / new_fs))
+    n2n_peak_spacing      = np.mean( 1 / (np.diff(n2n_rms_peaks) / new_fs))
+
+    respir_rate_all_chs[0, ch] = abs((respiratory_freq - bandpass_peak_spacing) / respiratory_freq) * 100
+    respir_rate_all_chs[1, ch] = abs((respiratory_freq - vae_peak_spacing) / respiratory_freq) * 100
+    respir_rate_all_chs[2, ch] = abs((respiratory_freq - n2n_peak_spacing) / respiratory_freq) * 100
+
+print(f"Bandpass x-correlation \t MEAN: {np.mean(cross_corr_all_chs[0, :])} \t STD: {np.std(cross_corr_all_chs[0, :])}")
+print(f"VAE x-correlation \t MEAN: {np.mean(cross_corr_all_chs[1, :])} \t STD: {np.std(cross_corr_all_chs[1, :])}")
+print(f"N2N x-correlation \t MEAN: {np.mean(cross_corr_all_chs[2, :])} \t STD: {np.std(cross_corr_all_chs[2, :])}")
+
+print(f"Bandpass percent diff in resp. rate \t MEAN: {np.mean(respir_rate_all_chs[0, :])} \t STD: {np.std(respir_rate_all_chs[0, :])}")
+print(f"VAE percent diff in resp. rate \t\t MEAN: {np.mean(respir_rate_all_chs[1, :])} \t STD: {np.std(respir_rate_all_chs[1, :])}")
+print(f"N2N percent diff in resp. rate \t\t MEAN: {np.mean(respir_rate_all_chs[2, :])} \t STD: {np.std(respir_rate_all_chs[2, :])}")
+
+
+
 
 # ----- Extra plots for debugging -----
 # Blood pressure with envelope
@@ -194,78 +294,20 @@ plt.show()
 # Inputs to cross-correlation
 plt.figure()
 plt.plot(bp_envelope_norm, label="BP envelope", alpha=0.8)
-plt.plot(bandpass_x_corr, label="Bandpass", alpha=0.5)
-plt.plot(cvae_x_corr, label="VAE", alpha=0.5)
-plt.plot(n2n_x_corr, label="Noise2Noise", alpha=0.5)
+plt.plot(cross_corr_waveforms[0, 0, :], label="Bandpass", alpha=0.5)
+plt.plot(cross_corr_waveforms[1, 0, :], label="VAE", alpha=0.5)
+plt.plot(cross_corr_waveforms[2, 0, :], label="Noise2Noise", alpha=0.5)
 plt.legend()
 plt.show()
 
-# Entire test set ENG signal
-start_time_debug = int(15.8 * fs)
-end_time_debug = int(start_time_debug + (1.2 * fs))
+# # 16-17s section of test set ENG signal
+# start_time_debug = int(15.8 * fs)
+# end_time_debug = int(start_time_debug + (1.2 * fs))
 
-plt.figure()
-plt.plot(time_full[start_time_debug:end_time_debug], n2n_noisy_inputs_ch[start_time_debug:end_time_debug], label="Noisy data (N2N only)", alpha=0.5)
-plt.plot(time_full[start_time_debug:end_time_debug], n2n_noisy_targets_ch[start_time_debug:end_time_debug], label="BP-filtered data (N2N and VAE)", alpha=0.5)
-plt.plot(time_full[start_time_debug:end_time_debug], cvae_reconstr_ch[start_time_debug:end_time_debug], label="VAE reconstr", alpha=0.5)
-plt.plot(time_full[start_time_debug:end_time_debug], n2n_reconstr_ch[start_time_debug:end_time_debug], label="N2N reconstr", alpha=0.5)
-plt.legend()
-plt.show()
-
-print("Bandpass x-correlation: ", np.corrcoef(bp_envelope_norm.ravel(), bandpass_x_corr)[0,1])
-print("VAE x-correlation: ", np.corrcoef(bp_envelope_norm.ravel(), cvae_x_corr)[0,1])
-print("N2N x-correlation: ", np.corrcoef(bp_envelope_norm.ravel(), n2n_x_corr)[0,1])
-
-# CHECKING RESPIRATORY RATE
-# Find peaks in envelopes, see which matches the right frequency - 0.25 Hz
-respiratory_freq = 0.25
-bandpass_rms_peaks, _ = find_peaks(bandpass_rms.to_numpy().ravel(), distance=3*fs)
-cvae_rms_peaks, _ = find_peaks(cvae_reconstr_ch_rms.to_numpy().ravel(), distance=3*fs)
-n2n_rms_peaks, _ = find_peaks(n2n_reconstr_ch_rms.to_numpy().ravel(), distance=3*fs)
-
-# Find mean spacing between peaks, return as frequency (1/ time differences) to compare with 0.25 Hz
-bandpass_peak_spacing = np.mean( 1 / (np.diff(bandpass_rms_peaks) / fs))
-cvae_peak_spacing = np.mean( 1 / (np.diff(cvae_rms_peaks) / fs))
-n2n_peak_spacing = np.mean( 1 / (np.diff(n2n_rms_peaks) / fs))
-
-bandpass_freq_diff = ((respiratory_freq - bandpass_peak_spacing) / respiratory_freq) * 100
-cvae_freq_diff = ((respiratory_freq - cvae_peak_spacing) / respiratory_freq) * 100
-n2n_freq_diff = ((respiratory_freq - n2n_peak_spacing) / respiratory_freq) * 100
-
-print("Bandpass percent diff in resp. rate: ", bandpass_freq_diff)
-print("VAE percent diff in resp. rate: ", cvae_freq_diff)
-print("N2N percent diff in resp. rate: ", n2n_freq_diff)
-
-# CALCULATE SNR (APPROXIMATE)#
-# Take section of baseline as approximate background noise, inspect plots manually first to see where these sections are
-num_samples = 120
-bandpass_start = int(5.28 * fs)
-cvae_start = int(0.0026 * fs)
-n2n_start = int(0.88 * fs)
-
-bandpass_end = bandpass_start + num_samples
-cvae_end = cvae_start + num_samples
-n2n_end = n2n_start + num_samples
-
-bandpass_baseline_sample = orig_filtered[bandpass_start:bandpass_end]
-cvae_baseline_sample = cvae_reconstr_ch[cvae_start:cvae_end]
-n2n_baseline_sample = n2n_reconstr_ch[n2n_start:n2n_end]
-
-# Take variance to get average power? (N)
-bandpass_baseline_noise_pwr = np.var(bandpass_baseline_sample)
-cvae_baseline_noise_pwr = np.var(cvae_baseline_sample)
-n2n_baseline_noise_pwr = np.var(n2n_baseline_sample)
-
-# Take variance of signal as average power (S = NoisyS - N?)
-bandpass_signal_pwr = np.var(orig_filtered) - bandpass_baseline_noise_pwr
-cvae_signal_pwr = np.var(cvae_reconstr_ch) - cvae_baseline_noise_pwr
-n2n_signal_pwr = np.var(n2n_reconstr_ch) - n2n_baseline_noise_pwr
-
-# Find SNR in dB (10log_10(S/N))
-bandpass_snr = 10 * np.log10(bandpass_signal_pwr / bandpass_baseline_noise_pwr)
-cvae_snr = 10 * np.log10(cvae_signal_pwr / cvae_baseline_noise_pwr)
-n2n_snr = 10 * np.log10(n2n_signal_pwr / n2n_baseline_noise_pwr)
-
-print("Bandpass SNR: ", bandpass_snr)
-print("VAE SNR: ", cvae_snr)
-print("N2N SNR: ", n2n_snr)
+# plt.figure()
+# plt.plot(time_full[start_time_debug:end_time_debug], n2n_noisy_inputs[start_time_debug:end_time_debug, select_ch], label="Noisy data (N2N only)", alpha=0.5)
+# plt.plot(time_full[start_time_debug:end_time_debug], n2n_noisy_targets[start_time_debug:end_time_debug, select_ch], label="BP-filtered data (N2N and VAE)", alpha=0.5)
+# plt.plot(time_full[start_time_debug:end_time_debug], vae_reconstr[start_time_debug:end_time_debug, select_ch], label="VAE reconstr", alpha=0.5)
+# plt.plot(time_full[start_time_debug:end_time_debug], n2n_reconstr[start_time_debug:end_time_debug, select_ch], label="N2N reconstr", alpha=0.5)
+# plt.legend()
+# plt.show()
