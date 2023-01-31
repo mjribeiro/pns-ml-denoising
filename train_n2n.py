@@ -16,6 +16,7 @@ from torch.utils.data import DataLoader
 # Local imports
 from models.noise2noise_model import *
 from datasets.vagus_dataset import VagusDatasetN2N
+from utils.analysis import *
 
 
 
@@ -36,7 +37,7 @@ def train():
     # Weights&Biases initialisation
     wandb.init(project="PNS Denoising",
             config = {
-                "learning_rate": 0.00001,
+                "learning_rate": 0.0001,
                 "epochs": 500,
                 "batch_size": 1024,
                 "kernel_size": 3})
@@ -49,11 +50,11 @@ def train():
     wandb.init(project="PNS Denoising")
     config = wandb.config
 
-    train_dataloader = DataLoader(train_dataset, batch_size=config.batch_size, shuffle=True)
+    train_dataloader = DataLoader(train_dataset, batch_size=config.batch_size, shuffle=False)
     val_dataloader   = DataLoader(val_dataset, batch_size=config.batch_size, shuffle=True)
     test_dataloader  = DataLoader(test_dataset, batch_size=config.batch_size, shuffle=False, drop_last=True)
 
-    sample, _ = train_dataset[0]
+    sample, _, _ = train_dataset[0]
 
     # Define model
     print("Setting up Noise2Noise model...")
@@ -66,6 +67,51 @@ def train():
 
     def loss_function(x, x_hat):
         return mse_loss(x, x_hat)
+
+    def loss_function(x, x_hat, bp, device, epoch, idx):
+
+        MSE = mse_loss(x, x_hat)
+
+        # Adapt loss based on current epoch
+        loss_step = config.epochs - (config.epochs / 4)
+        loss_weight = np.linspace(0.01, 0.75, int(loss_step))
+
+        if epoch < (config.epochs / 4):
+            loss = MSE
+        else:
+            # Flatten input data, predictions, and blood pressure window per channel (since dataset is unshuffled)
+            x_hat_flat = torch.flatten(torch.swapaxes(x_hat, 0, 1), start_dim=1)
+            bp_flat = torch.flatten(torch.swapaxes(bp, 0, 1), start_dim=1)
+
+            # Get dimensions and window sizes for moving RMS data
+            len_data = x_hat_flat.shape[-1]
+            window_len = int(100e3)
+            len_envelope = len_data - window_len
+
+            # Extract respiratory envelope from blood pressure data
+            # Use channel 1 only since same for all channels
+            bp_envelope = extract_resp_envelope(bp_flat[0, :], len_data=len_envelope, device=device, num_chs=9)
+
+            # Get moving RMS plots
+            bp_envelope, x_hat_moving_rms = compute_moving_rms(x_hat_flat, bp_envelope, device=device, fs=100e3, rms_win_len=window_len, resample_num=len_data)
+
+            MSE_envelope = mse_loss(bp_envelope, x_hat_moving_rms)
+
+            MSE_envelope_weight = loss_weight[idx]
+            MSE_reconstr_weight = 1 - MSE_envelope_weight
+
+            loss =  (MSE_envelope_weight * MSE_envelope) + (MSE_reconstr_weight * MSE)
+
+        # LD = kld_loss(F.log_softmax(bp_envelope, -1), F.softmax(x_hat_moving_rms, -1))
+
+        # Assign appropriate weightings
+        # MSE = (1 - kld_weight) * MSE
+        # KLD = kld_weight * KLD
+        # MSE = 0.33 * MSE
+        # KLD = 0.33 * KLD
+        # MSE_reconstr = 0.33 * MSE_reconstr
+        
+        return loss
 
 
     optimizer = Adam(model.parameters(),
@@ -87,6 +133,7 @@ def train():
 
     best_loss = 99999.0
     best_loss_epoch = 0
+    idx = 0
 
     for epoch in range(config.epochs):
         overall_loss = 0
@@ -98,28 +145,31 @@ def train():
             optimizer.zero_grad()
 
             x_hat = model(inputs)
-            loss = loss_function(targets, x_hat)
+            loss = loss_function(targets, x_hat, bp, device=device, epoch=epoch, idx=idx)
+            # loss = loss_function(targets, x_hat)
 
             overall_loss += loss.item() * inputs.size(0)
 
             loss.backward()
             optimizer.step()
 
+        if epoch >= (config.epochs / 4): 
+            idx += 1
         # average_loss = overall_loss / (batch_idx*config.batch_size)
         # Sources for new loss: https://stackoverflow.com/questions/61284248/is-it-a-good-idea-to-multiply-loss-item-by-batch-size-to-get-the-loss-of-a-bat
         # https://pytorch.org/tutorials/beginner/transfer_learning_tutorial.html
         average_loss = overall_loss / len(train_dataset)
 
-        if average_loss < best_loss:
-            best_model = copy.deepcopy(model)
-            best_loss = average_loss
-            best_loss_epoch = epoch
+        # if average_loss < best_loss:
+        #     best_model = copy.deepcopy(model)
+        #     best_loss = average_loss
+        #     best_loss_epoch = epoch
 
         print("\tEpoch", epoch + 1, "complete!", "\tAverage Loss: ", average_loss)
         wandb.log({"loss": average_loss})
 
-        if epoch > best_loss_epoch + 20:
-            break
+        # if epoch > best_loss_epoch + 20:
+        #     break
 
     print("Finished!")
     print('Training finished, took {:.2f}s'.format(time.time() - training_start_time))
@@ -130,24 +180,24 @@ def train():
     
     # ----- VALIDATION FOR HYPERPARAMETER OPT -----
     # model.load_state_dict(torch.load('./saved/noise2noise.pth'))
-    model = best_model
+    # model = best_model
 
     model.eval()
 
-    with torch.no_grad():
-        overall_val_loss = 0
-        for _, (inputs, targets, bp) in enumerate(val_dataloader):
-            inputs = inputs.to(device).float()
-            targets = targets.to(device).float()
+    # with torch.no_grad():
+    #     overall_val_loss = 0
+    #     for _, (inputs, targets, bp) in enumerate(val_dataloader):
+    #         inputs = inputs.to(device).float()
+    #         targets = targets.to(device).float()
 
-            x_hat = model(inputs)
-            loss = loss_function(targets, x_hat)
+    #         x_hat = model(inputs)
+    #         loss = loss_function(inputs, x_hat, bp, device=device)
 
-            overall_val_loss += loss.item() * inputs.size(0)
+    #         overall_val_loss += loss.item() * inputs.size(0)
 
-        average_val_loss = overall_val_loss / len(val_dataset)
-        print("\tAverage Validation Loss: ", average_val_loss)
-        wandb.log({"val_loss": average_val_loss})
+    #     average_val_loss = overall_val_loss / len(val_dataset)
+    #     print("\tAverage Validation Loss: ", average_val_loss)
+    #     wandb.log({"val_loss": average_val_loss})
 
     
     # ----- INFERENCE -----
@@ -159,7 +209,7 @@ def train():
         start_idx = 0
         end_idx = start_idx+config.batch_size
 
-        for batch_idx, (inputs, targets) in enumerate(test_dataloader):
+        for batch_idx, (inputs, targets, _) in enumerate(test_dataloader):
             inputs = inputs.to(device).float()
             targets = targets.to(device).float()
 

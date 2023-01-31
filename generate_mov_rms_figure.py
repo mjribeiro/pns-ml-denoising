@@ -142,7 +142,7 @@ ax3.set_xlabel("Time (s)")
 # ax3.set_ylabel("Amplitude (norm.)")
 ax3.set_ylim([-1, 1])
 
-# fig1.savefig("./plots/denoised.png", bbox_inches='tight')
+fig1.savefig("./plots/denoised.png", bbox_inches='tight')
 # fig1.show()
 
 # 4) BP with envelope
@@ -200,7 +200,7 @@ ax7.set_xlim([-1.5, 21.5])
 ax7.set_xlabel("Time (s)")
 # ax7.set_ylabel("Amplitude (norm.)")
 
-# plt.savefig("./plots/mov_rms.png", bbox_inches='tight')
+plt.savefig("./plots/mov_rms.png", bbox_inches='tight')
 # plt.show()
 
 
@@ -292,13 +292,14 @@ plt.plot(xnew, bp_envelope)
 plt.show()
 
 # Inputs to cross-correlation
+matplotlib.rcParams.update({'font.size': 12})
 plt.figure()
 plt.plot(bp_envelope_norm, label="BP envelope", alpha=0.8)
 plt.plot(cross_corr_waveforms[0, 0, :], label="Bandpass", alpha=0.5)
 plt.plot(cross_corr_waveforms[1, 0, :], label="VAE", alpha=0.5)
 plt.plot(cross_corr_waveforms[2, 0, :], label="Noise2Noise", alpha=0.5)
 plt.legend()
-plt.show()
+plt.savefig('./plots/mov_rms_overlap.png')
 
 # # 16-17s section of test set ENG signal
 # start_time_debug = int(15.8 * fs)
