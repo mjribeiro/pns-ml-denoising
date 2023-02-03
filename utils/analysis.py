@@ -8,24 +8,6 @@ from scipy.signal import butter, filtfilt, find_peaks, resample
 from sklearn.preprocessing import StandardScaler
 
 
-# class Resample(torch.autograd.Function):
-#     @staticmethod
-#     def forward(ctx, tensor, constant):
-#         # ctx is a context object that can be used to stash information
-#         # for backward computation
-#         ctx.constant = constant
-#         result = resample(tensor.cpu().detach(), constant)
-#         ctx.save_for_backward(tensor) # is this needed?
-#         return torch.as_tensor(result)
-
-
-#     @staticmethod
-#     def backward(ctx, grad_output):
-#         # We return as many input gradients as there were arguments.
-#         # Gradients of non-Tensor arguments to forward must be None.
-#         return torch.as_tensor(resample(grad_output, ctx.constant))
-
-
 
 def scaler_torch(x):
     mu = torch.mean(x, 0, keepdim=True)
@@ -133,6 +115,31 @@ def compute_moving_rms(eng_data, bp_envelope, device, fs=100e3, rms_win_len=int(
     # moving_rms_data = torch.tensor(moving_rms_data, requires_grad=True).to(device).float()
     
     return bp_envelope, moving_rms_data
+
+
+def get_rms_envelope(x_hat, bp, window_len, device):
+    """tbd
+        Args:
+        Outputs:
+        Raises:
+    """
+    # Flatten input data, predictions, and blood pressure window per channel (since dataset is unshuffled)
+    x_hat_flat = torch.flatten(torch.swapaxes(x_hat, 0, 1), start_dim=1)
+    bp_flat = torch.flatten(torch.swapaxes(bp, 0, 1), start_dim=1)
+
+    # Get dimensions and window sizes for moving RMS data
+    len_data = x_hat_flat.shape[-1]
+    window_len = int(100e3)
+    len_envelope = len_data - window_len
+
+    # Extract respiratory envelope from blood pressure data
+    # Use channel 1 only since same for all channels
+    bp_envelope = extract_resp_envelope(bp_flat[0, :], len_data=len_envelope, device=device, num_chs=9)
+
+    # Get moving RMS plots
+    bp_envelope, x_hat_moving_rms = compute_moving_rms(x_hat_flat, bp_envelope, device=device, fs=100e3, rms_win_len=window_len, resample_num=len_data)
+
+    return bp_envelope, x_hat_moving_rms
 
 
 def prep_bp_data(bp_envelope):

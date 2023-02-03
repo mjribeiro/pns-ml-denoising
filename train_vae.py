@@ -19,6 +19,7 @@ from datasets.vagus_dataset import VagusDataset, VagusDatasetN2N
 from utils.analysis import *
 
 
+
 # Address GPU memory issues (source: https://stackoverflow.com/a/66921450)
 gc.collect()
 torch.cuda.empty_cache()
@@ -30,10 +31,12 @@ device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 # Weights&Biases initialisation
 wandb.init(project="PNS Denoising",
         config = {
-            "learning_rate": 1e-3,
+            "learning_rate": 5e-3,
             "epochs": 500,
             "batch_size": 1024,
-            "kernel_size": 3})
+            "kernel_size": 3,
+            "change_weights": True,
+            "latent_dim": 100})
 
 config = wandb.config
 
@@ -41,10 +44,12 @@ config = wandb.config
 # train_dataset = VagusDataset(train=True)
 # test_dataset  = VagusDataset(train=False)
 train_dataset = VagusDatasetN2N(stage="train")
+val_dataset   = VagusDatasetN2N(stage="val")
 test_dataset  = VagusDatasetN2N(stage="test")
 
 train_dataloader = DataLoader(train_dataset, batch_size=config.batch_size, shuffle=False)
-test_dataloader = DataLoader(test_dataset, batch_size=config.batch_size, shuffle=False, drop_last=True)
+val_dataloader   = DataLoader(val_dataset, batch_size=config.batch_size, shuffle=False)
+test_dataloader  = DataLoader(test_dataset, batch_size=config.batch_size, shuffle=False, drop_last=True)
 
 # sample = train_dataset.__getitem__(0)
 
@@ -55,69 +60,58 @@ test_dataloader = DataLoader(test_dataset, batch_size=config.batch_size, shuffle
 # Define model
 print("Setting up coordinate VAE model...")
 encoder = Encoder(input_dim=9, 
-                latent_dim=100, 
-                kernel_size=config.kernel_size, 
-                num_layers=4, 
-                pool_step=2, 
-                batch_size=config.batch_size, 
-                device=device)
-decoder = Decoder(latent_dim=100, 
-                output_dim=9, 
-                kernel_size=config.kernel_size, 
-                num_layers=4, 
-                pool_step=2, 
-                device=device)
+                  latent_dim=config.latent_dim, 
+                  kernel_size=config.kernel_size, 
+                  num_layers=4, 
+                  pool_step=2, 
+                  batch_size=config.batch_size, 
+                  device=device)
+decoder = Decoder(latent_dim=config.latent_dim, 
+                  output_dim=9, 
+                  kernel_size=config.kernel_size, 
+                  num_layers=4, 
+                  pool_step=2, 
+                  device=device)
 model = CoordinateVAEModel(Encoder=encoder, 
-                        Decoder=decoder)
+                           Decoder=decoder)
 
 # Hyperparameter setup
-mse_loss = nn.MSELoss()
+mse_loss = nn.MSELoss(reduction='mean')
 kld_loss = nn.KLDivLoss(reduction='batchmean')
 
-def loss_function(x, x_hat, bp, kld_weight, device, epoch, idx):
+def loss_function(x, x_hat, bp, device, epoch, idx, change_weights=False):
 
     MSE = mse_loss(x, x_hat)
     KLD = kld_loss(F.log_softmax(x, -1), F.softmax(x_hat, -1))
 
     # Adapt loss based on current epoch
-    loss_step = config.epochs - (config.epochs / 4)
-    loss_weight = np.linspace(0.01, 0.75, int(loss_step))
+    if change_weights:
+        loss_step = config.epochs - (config.epochs / 4)
+        loss_weight = np.linspace(0.01, 0.5, int(loss_step))
 
-    if epoch < (config.epochs / 4):
-        loss = (0.5 * MSE) + (0.5 * KLD)
+        if epoch < (config.epochs / 4):
+            loss = (0.5 * MSE) + (0.5 * KLD)
+        else:
+            # Get moving RMS plots
+            bp_envelope, x_hat_moving_rms = get_rms_envelope(x_hat=x_hat, bp=bp, window_len=int(100e3), device=device)
+
+            MSE_envelope = mse_loss(bp_envelope, x_hat_moving_rms)
+
+            MSE_envelope_weight = loss_weight[idx]
+            MSE_reconstr_weight = 0.5 * (1 - MSE_envelope_weight)
+            KLD_weight = 0.5 * (1 - MSE_envelope_weight)
+
+            loss =  (MSE_envelope_weight * MSE_envelope) + (MSE_reconstr_weight * MSE) + (KLD_weight * KLD)
     else:
-        # Flatten input data, predictions, and blood pressure window per channel (since dataset is unshuffled)
-        x_hat_flat = torch.flatten(torch.swapaxes(x_hat, 0, 1), start_dim=1)
-        bp_flat = torch.flatten(torch.swapaxes(bp, 0, 1), start_dim=1)
-
-        # Get dimensions and window sizes for moving RMS data
-        len_data = x_hat_flat.shape[-1]
-        window_len = int(100e3)
-        len_envelope = len_data - window_len
-
-        # Extract respiratory envelope from blood pressure data
-        # Use channel 1 only since same for all channels
-        bp_envelope = extract_resp_envelope(bp_flat[0, :], len_data=len_envelope, device=device, num_chs=9)
-
         # Get moving RMS plots
-        bp_envelope, x_hat_moving_rms = compute_moving_rms(x_hat_flat, bp_envelope, device=device, fs=100e3, rms_win_len=window_len, resample_num=len_data)
-
+        bp_envelope, x_hat_moving_rms = get_rms_envelope(x_hat=x_hat, bp=bp, window_len=int(100e3), device=device)
         MSE_envelope = mse_loss(bp_envelope, x_hat_moving_rms)
 
-        MSE_envelope_weight = loss_weight[idx]
-        MSE_reconstr_weight = 0.5 * (1 - MSE_envelope_weight)
-        KLD_weight = 0.5 * (1 - MSE_envelope_weight)
+        MSE_envelope_weight = 0.333
+        KLD_weight          = 0.333
+        MSE_reconstr_weight = 1 - MSE_envelope_weight - KLD_weight
 
         loss =  (MSE_envelope_weight * MSE_envelope) + (MSE_reconstr_weight * MSE) + (KLD_weight * KLD)
-
-    # LD = kld_loss(F.log_softmax(bp_envelope, -1), F.softmax(x_hat_moving_rms, -1))
-
-    # Assign appropriate weightings
-    # MSE = (1 - kld_weight) * MSE
-    # KLD = kld_weight * KLD
-    # MSE = 0.33 * MSE
-    # KLD = 0.33 * KLD
-    # MSE_reconstr = 0.33 * MSE_reconstr
     
     return loss, KLD
 
@@ -137,20 +131,20 @@ if torch.cuda.is_available():
 
 training_start_time = time.time()
 
-model.train()
+# best_loss = 99999.0
+# best_loss_epoch = 0
+# kld_weight = 0.5
+# kld_rate = 0 # TODO: Could change this to rate of increase as per:
+#                     # https://arxiv.org/pdf/1511.06349.pdf
 
-best_loss = 99999.0
-best_loss_epoch = 0
-kld_weight = 0.5
-kld_rate = 0 # TODO: Could change this to rate of increase as per:
-                    # https://arxiv.org/pdf/1511.06349.pdf
 idx = 0
 
 for epoch in range(config.epochs):
+    model.train()
     overall_loss = 0
-    # TODO: Check if epoch should be zero-indexed or not - doesn't seem to make a difference?
     model.epoch = epoch
 
+    # ----- TRAIN -----
     # (_, x) since N2N data has raw signal and filtered signal, so for VAE only using filtered
     # signal as the input
     for batch_idx, (_, x, bp) in enumerate(train_dataloader):
@@ -159,20 +153,39 @@ for epoch in range(config.epochs):
         optimizer.zero_grad()
 
         x_hat = model(x)
-        loss, kld = loss_function(x, x_hat, bp, kld_weight=kld_weight, device=device, epoch=epoch, idx=idx)
+        loss, _ = loss_function(x, x_hat, bp, device=device, epoch=epoch, idx=idx, change_weights=config.change_weights)
         
         overall_loss += loss.item() * x.size(0)
         
         loss.backward()
         optimizer.step()
-        
-    if epoch >= (config.epochs / 4):
-        idx += 1
     
     average_loss = overall_loss / len(train_dataset)
     
     print("\tEpoch", epoch + 1, "complete!", "\tAverage Loss: ", average_loss)
     wandb.log({"loss": average_loss})
+
+    # ----- VALIDATE -----
+    model.eval()
+
+    with torch.no_grad():
+        overall_val_loss = 0
+        for batch_idx, (_, x, bp) in enumerate(val_dataloader):
+            x = x.to(device).float()
+
+            x_hat = model(x)
+            loss, _ = loss_function(x, x_hat, bp, device=device, epoch=epoch, idx=idx, change_weights=config.change_weights)
+
+            overall_val_loss += loss.item() * x.size(0)
+
+        average_val_loss = overall_val_loss / len(val_dataset)
+        print("\t\t\t\tAverage Validation Loss: ", average_val_loss)
+        wandb.log({"val_loss": average_val_loss})
+
+    # Index that updates with each epoch past a certain point
+    # Needed for updating weights for loss elements
+    if epoch >= (config.epochs / 4): 
+        idx += 1
 
     # if loss < best_loss:
     #     best_model = copy.deepcopy(model)

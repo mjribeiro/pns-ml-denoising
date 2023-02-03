@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 
 from matplotlib import ticker as mtick
-from scipy.interpolate import make_interp_spline
+from scipy.interpolate import make_interp_spline, PchipInterpolator
 from scipy.signal import butter, filtfilt, find_peaks, resample
 from sklearn.preprocessing import StandardScaler
 
@@ -30,7 +30,7 @@ def calculate_envelope_points(x):
     return peak_idx
 
 def butter_lowpass(cutoff, fs, order=5):
-    return butter(order, cutoff, fs=fs, btype='low', analog=False)
+    return butter(order, cutoff, fs=fs, btype='low')
 
 def butter_lowpass_filter(data, cutoff, fs, order=5):
     b, a = butter_lowpass(cutoff, fs, order=order)
@@ -47,7 +47,7 @@ for ch in range(num_chs):
     if ch == 0:
         # Initialise VAE arrays
         vae_noisy_inputs_ch = np.load(f"./results/cvae_noisy_input_ch{ch+1}.npy")
-        vae_reconstr_ch     = np.load(f"./results/cvae_reconstr_ch{ch+1}.npy")
+        vae_reconstr_ch     = np.load(f"./results/cvae_reconstr_rms_ch{ch+1}.npy")
 
         vae_noisy_inputs = np.zeros((len(vae_noisy_inputs_ch), num_chs))
         vae_reconstr     = np.zeros((len(vae_reconstr_ch), num_chs))
@@ -73,7 +73,7 @@ for ch in range(num_chs):
     else:
         # VAE data
         vae_noisy_inputs[:, ch] = np.load(f"./results/cvae_noisy_input_ch{ch+1}.npy")
-        vae_reconstr[:, ch]     = np.load(f"./results/cvae_reconstr_ch{ch+1}.npy")
+        vae_reconstr[:, ch]     = np.load(f"./results/cvae_reconstr_rms_ch{ch+1}.npy")
 
         # N2N data
         n2n_noisy_inputs[:, ch]  = np.load(f"./results/n2n_noisy_input_ch{ch+1}.npy")
@@ -162,11 +162,14 @@ peaks_x = [x/fs for x in peaks]
 
 # Make spline from envelope points
 spl = make_interp_spline(peaks_x, ch1_bp_recording[peaks])
+# spl = PchipInterpolator(peaks_x, ch1_bp_recording[peaks])
+# xnew = np.linspace(min(peaks_x), max(peaks_x), len(vae_reconstr[:, select_ch]))
 xnew = np.linspace(min(peaks_x), max(peaks_x), 1000)
 spl_y = spl(xnew)
 
 # Lowpass filter envelope so it's smoother
 bp_envelope = butter_lowpass_filter(spl_y, 15, 1000)
+# bp_envelope = spl_y
 
 ax4.plot(time_full, ch1_bp_recording[:max_idx])
 ax4.plot(xnew, bp_envelope)
@@ -212,6 +215,8 @@ bp_envelope_norm = scaler.fit_transform(bp_envelope.reshape(-1, 1))
 
 # Resampling to 1000 long signals to match blood pressure envelope length for cross-correlation
 resample_num = len(bp_envelope_norm)
+# resample_num = len(bp_envelope_norm) - int(fs) + 1
+
 dx = (1 / fs) * len(bandpass_rms) / resample_num
 new_fs = 1 / dx
 
@@ -226,7 +231,8 @@ respir_rate_all_chs  = np.zeros((num_models, num_chs))
 
 
 for ch in range(num_chs):
-    bandpass_data = bandpass_filter(n2n_noisy_inputs[:, ch], [250, 10e3], fs)
+    # bandpass_data = bandpass_filter(n2n_noisy_inputs[:, ch], [250, 10e3], fs)
+    bandpass_data = n2n_noisy_targets[:, ch]
 
     # Moving RMS window for specific channel
     bandpass_rms     = rolling_rms(bandpass_data, N_BANDPASS)
@@ -247,6 +253,9 @@ for ch in range(num_chs):
     bandpass_x_corr = butter_lowpass_filter(resample(bandpass_rms_norm, resample_num), filter_cutoff, resample_num)
     vae_x_corr      = butter_lowpass_filter(resample(vae_reconstr_rms_norm, resample_num), filter_cutoff, resample_num)
     n2n_x_corr      = butter_lowpass_filter(resample(n2n_reconstr_rms_norm, resample_num), filter_cutoff, resample_num)
+    # bandpass_x_corr = butter_lowpass_filter(bandpass_rms_norm, filter_cutoff, fs)
+    # vae_x_corr      = butter_lowpass_filter(vae_reconstr_rms_norm, filter_cutoff, fs)
+    # n2n_x_corr      = butter_lowpass_filter(n2n_reconstr_rms_norm, filter_cutoff, fs)
 
     # Store waveforms for plotting later
     cross_corr_waveforms[0, ch, :] = bandpass_x_corr
@@ -257,6 +266,10 @@ for ch in range(num_chs):
     cross_corr_all_chs[0, ch] = np.corrcoef(bp_envelope_norm.ravel(), bandpass_x_corr)[0,1]
     cross_corr_all_chs[1, ch] = np.corrcoef(bp_envelope_norm.ravel(), vae_x_corr)[0,1]
     cross_corr_all_chs[2, ch] = np.corrcoef(bp_envelope_norm.ravel(), n2n_x_corr)[0,1]
+    # cross_corr_all_chs[0, ch] = np.corrcoef(resample(bp_envelope_norm, resample_num).ravel(), bandpass_x_corr)[0,1]
+    # cross_corr_all_chs[1, ch] = np.corrcoef(resample(bp_envelope_norm, resample_num).ravel(), vae_x_corr)[0,1]
+    # cross_corr_all_chs[2, ch] = np.corrcoef(resample(bp_envelope_norm, resample_num).ravel(), n2n_x_corr)[0,1]
+
 
     # CHECKING RESPIRATORY RATE
     # Using same inputs as x-corr, so need to use modified fs since resampling took place
