@@ -32,11 +32,12 @@ device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 wandb.init(project="PNS Denoising",
         config = {
             "learning_rate": 5e-3,
-            "epochs": 500,
-            "batch_size": 1024,
-            "kernel_size": 3,
-            "change_weights": True,
-            "latent_dim": 100})
+            "epochs": 1000,
+            "batch_size": 2048,
+            "kernel_size": 5,
+            "change_weights": False,
+            "latent_dim": 120,
+            "early_stop": False})
 
 config = wandb.config
 
@@ -107,8 +108,8 @@ def loss_function(x, x_hat, bp, device, epoch, idx, change_weights=False):
         bp_envelope, x_hat_moving_rms = get_rms_envelope(x_hat=x_hat, bp=bp, window_len=int(100e3), device=device)
         MSE_envelope = mse_loss(bp_envelope, x_hat_moving_rms)
 
-        MSE_envelope_weight = 0.333
-        KLD_weight          = 0.333
+        MSE_envelope_weight = 0.25
+        KLD_weight          = 0.375
         MSE_reconstr_weight = 1 - MSE_envelope_weight - KLD_weight
 
         loss =  (MSE_envelope_weight * MSE_envelope) + (MSE_reconstr_weight * MSE) + (KLD_weight * KLD)
@@ -131,8 +132,8 @@ if torch.cuda.is_available():
 
 training_start_time = time.time()
 
-# best_loss = 99999.0
-# best_loss_epoch = 0
+best_loss = 99999.0
+best_loss_epoch = 0
 # kld_weight = 0.5
 # kld_rate = 0 # TODO: Could change this to rate of increase as per:
 #                     # https://arxiv.org/pdf/1511.06349.pdf
@@ -187,18 +188,22 @@ for epoch in range(config.epochs):
     if epoch >= (config.epochs / 4): 
         idx += 1
 
-    # if loss < best_loss:
-    #     best_model = copy.deepcopy(model)
-    #     best_loss = average_loss
-    #     best_loss_epoch = epoch
+    if config.early_stop:
+        if loss < best_loss:
+            best_model = copy.deepcopy(model)
+            best_loss = average_loss
+            best_loss_epoch = epoch
 
-    # if epoch > best_loss_epoch + 20:
-    #     break
+        if epoch > best_loss_epoch + 20:
+            break
         
 print("Finished!")
 print('Training finished, took {:.2f}s'.format(time.time() - training_start_time))
 
 # TODO: Folder needs to be created/checked if exists before using torch.save()
+if config.early_stop:
+    model = best_model
+    
 PATH = './saved/coordinate_vae.pth'
 torch.save(model.state_dict(), PATH)
 

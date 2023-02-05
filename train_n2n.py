@@ -38,10 +38,11 @@ def train():
     wandb.init(project="PNS Denoising",
             config = {
                 "learning_rate": 0.0001,
-                "epochs": 1000,
-                "batch_size": 1024,
-                "kernel_size": 3,
-                "change_weights": False})
+                "epochs": 2000,
+                "batch_size": 2048,
+                "kernel_size": 5,
+                "change_weights": False,
+                "early_stop": False})
 
     # Load vagus dataset
     train_dataset = VagusDatasetN2N(stage="train")
@@ -115,8 +116,8 @@ def train():
     # ----- TRAINING/VALIDATION LOOP -----
     training_start_time = time.time()
 
-    # best_loss = 99999.0
-    # best_loss_epoch = 0
+    best_loss = 99999.0
+    best_loss_epoch = 0
 
     idx = 0
 
@@ -170,11 +171,23 @@ def train():
         if epoch >= (config.epochs / 4): 
             idx += 1
 
+        if config.early_stop:
+            if loss < best_loss:
+                best_model = copy.deepcopy(model)
+                best_loss = average_loss
+                best_loss_epoch = epoch
+
+            if epoch > best_loss_epoch + 20:
+                break
+
     print("Finished!")
     print('Training finished, took {:.2f}s'.format(time.time() - training_start_time))
 
     Path('./saved/').mkdir(parents=True, exist_ok=True)
     # torch.save(best_model.state_dict(), './saved/noise2noise.pth')
+
+    if config.early_stop:
+        model = best_model
 
     
     # ----- INFERENCE -----
