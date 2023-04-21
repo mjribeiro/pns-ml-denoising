@@ -1,6 +1,7 @@
 import copy
 import gc
 import numpy as np
+import random
 import time
 import torch
 import torch.nn as nn
@@ -20,6 +21,10 @@ from utils.analysis import *
 
 
 
+torch.manual_seed(0)
+np.random.seed(0)
+random.seed(0)
+
 # Address GPU memory issues (source: https://stackoverflow.com/a/66921450)
 gc.collect()
 torch.cuda.empty_cache()
@@ -32,7 +37,7 @@ device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 wandb.init(project="PNS Denoising",
         config = {
             "learning_rate": 5e-3,
-            "epochs": 1000,
+            "epochs": 500,
             "batch_size": 2048,
             "kernel_size": 5,
             "change_weights": False,
@@ -128,7 +133,7 @@ if torch.cuda.is_available():
     model.cuda()
 
 # Get parameter count
-# print(sum(p.numel() for p in model.parameters()))
+print(sum(p.numel() for p in model.parameters()))
 
 training_start_time = time.time()
 
