@@ -29,24 +29,24 @@ eng_data_df    = pd.DataFrame(eng_data, columns=["Time", "Channel 1", "Channel 2
 
 # ----- PLOT SAMPLE OF ALL CHANNELS (STACKED)
 # plot_all_channels(eng_data_df, filt=False, fs=100e3, lims=np.asarray([0, 2]))
-plt.plot(eng_data_df["Time"], eng_data_df["Channel 1"])
-plt.show()
+# plt.plot(eng_data_df["Time"], eng_data_df["Channel 1"])
+# plt.show()
 
 win_length = 0.01024
 fs = 100e3
 
 # ----- SORT ALL CHANNEL DATA INTO ONE DATASET
 print("Creating datasets...")
-vagus_data_raw, vagus_data_filt_wide, vagus_data_filt_narrow = generate_datasets(eng_data_df,
-                                                                                 bp_data=blood_pressure,
-                                                                                 fs=fs,
-                                                                                 num_channels=9,
-                                                                                 win_length=win_length)
+n2n_X_train, n2n_X_val, n2n_X_test, n2n_y_train, n2n_y_val, n2n_y_test = generate_datasets(eng_data_df,
+                                                                                           bp_data=blood_pressure,
+                                                                                           fs=fs,
+                                                                                           num_channels=9,
+                                                                                           win_length=win_length)
 
 # TODO: Make test set hold out - maybe split before prepare_n2n_data and only do this for training data?
-n2n_X_train, n2n_X_val, n2n_X_test, n2n_y_train, n2n_y_val, n2n_y_test = prepare_n2n_data(noisy_inputs=vagus_data_raw,
-                                                                                          filtered_data=vagus_data_filt_narrow,
-                                                                                          bp_data=blood_pressure)
+# n2n_X_train, n2n_X_val, n2n_X_test, n2n_y_train, n2n_y_val, n2n_y_test = prepare_n2n_data(noisy_inputs=vagus_data_raw,
+#                                                                                           filtered_data=vagus_data_filt_narrow,
+#                                                                                           bp_data=blood_pressure)
 
 # ----- SAVE DATASET TO BE USED IN ML
 np.save(f'./data/Metcalfe-2014/n2n_X_train.npy', n2n_X_train)
