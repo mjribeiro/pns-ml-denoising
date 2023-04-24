@@ -57,7 +57,7 @@ def train():
     test_dataloader  = DataLoader(test_dataset, batch_size=config.batch_size, shuffle=False, drop_last=True)
 
     sample, _, _ = train_dataset[0]
-
+ 
     # Define model
     print("Setting up Noise2Noise model...")
     encoder = Noise2NoiseEncoder(num_channels=sample.shape[0])

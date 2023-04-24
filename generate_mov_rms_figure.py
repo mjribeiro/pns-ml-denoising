@@ -228,6 +228,7 @@ respiratory_freq = 0.25
 cross_corr_waveforms = np.zeros((num_models, num_chs, resample_num))
 cross_corr_all_chs   = np.zeros((num_models, num_chs))
 respir_rate_all_chs  = np.zeros((num_models, num_chs))
+mse_all_chs  = np.zeros((num_models, num_chs))
 
 
 for ch in range(num_chs):
@@ -286,6 +287,12 @@ for ch in range(num_chs):
     respir_rate_all_chs[1, ch] = abs((respiratory_freq - vae_peak_spacing) / respiratory_freq) * 100
     respir_rate_all_chs[2, ch] = abs((respiratory_freq - n2n_peak_spacing) / respiratory_freq) * 100
 
+    # CHECKING MSE
+    mse_all_chs[0, ch] = ((bp_envelope_norm.ravel() - bandpass_x_corr) ** 2).mean(axis=0)
+    mse_all_chs[1, ch] = ((bp_envelope_norm.ravel() - vae_x_corr) ** 2).mean(axis=0)
+    mse_all_chs[2, ch] = ((bp_envelope_norm.ravel() - n2n_x_corr) ** 2).mean(axis=0)
+
+
 print(f"Bandpass x-correlation \t MEAN: {np.mean(cross_corr_all_chs[0, :])} \t STD: {np.std(cross_corr_all_chs[0, :])}")
 print(f"VAE x-correlation \t MEAN: {np.mean(cross_corr_all_chs[1, :])} \t STD: {np.std(cross_corr_all_chs[1, :])}")
 print(f"N2N x-correlation \t MEAN: {np.mean(cross_corr_all_chs[2, :])} \t STD: {np.std(cross_corr_all_chs[2, :])}")
@@ -294,6 +301,9 @@ print(f"Bandpass percent diff in resp. rate \t MEAN: {np.mean(respir_rate_all_ch
 print(f"VAE percent diff in resp. rate \t\t MEAN: {np.mean(respir_rate_all_chs[1, :])} \t STD: {np.std(respir_rate_all_chs[1, :])}")
 print(f"N2N percent diff in resp. rate \t\t MEAN: {np.mean(respir_rate_all_chs[2, :])} \t STD: {np.std(respir_rate_all_chs[2, :])}")
 
+print(f"Bandpass MSE \t MEAN: {np.mean(mse_all_chs[0, :])} \t STD: {np.std(mse_all_chs[0, :])}")
+print(f"VAE MSE \t\t MEAN: {np.mean(mse_all_chs[1, :])} \t STD: {np.std(mse_all_chs[1, :])}")
+print(f"N2N MSE \t\t MEAN: {np.mean(mse_all_chs[2, :])} \t STD: {np.std(mse_all_chs[2, :])}")
 
 
 
