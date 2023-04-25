@@ -153,6 +153,7 @@ time_full = np.arange(0, len(vae_reconstr[:, select_ch])/fs, 1/fs)
 max_idx = len(time_full)
 
 ch1_bp_recording = entire_bp_recording[:, 0, :].flatten()
+ch1_bp_recording = ch1_bp_recording[:max_idx]
 # ch1_bp_recording = butter_lowpass_filter(ch1_bp_recording, 100, 100e3)
 
 peaks = calculate_envelope_points(ch1_bp_recording)
@@ -161,18 +162,23 @@ peaks = list(filter(lambda x : x < max_idx, peaks))
 peaks_x = [x/fs for x in peaks]
 
 # Make spline from envelope points
-spl = make_interp_spline(peaks_x, ch1_bp_recording[peaks])
+spl = make_interp_spline(peaks, ch1_bp_recording[peaks])
 # spl = PchipInterpolator(peaks_x, ch1_bp_recording[peaks])
 # xnew = np.linspace(min(peaks_x), max(peaks_x), len(vae_reconstr[:, select_ch]))
-xnew = np.linspace(min(peaks_x), max(peaks_x), 1000)
+# xnew = np.linspace(min(peaks_x), max(peaks_x), 1000)
+xnew = np.linspace(min(peaks), max(peaks), len(ch1_bp_recording))
+xnew_sec = np.linspace(min(peaks_x), max(peaks_x), len(ch1_bp_recording))
+
 spl_y = spl(xnew)
 
 # Lowpass filter envelope so it's smoother
-bp_envelope = butter_lowpass_filter(spl_y, 15, 1000)
+# bp_envelope = butter_lowpass_filter(spl_y, 15, 1000)
+bp_envelope = butter_lowpass_filter(spl_y, 100, fs)
 # bp_envelope = spl_y
 
-ax4.plot(time_full, ch1_bp_recording[:max_idx])
-ax4.plot(xnew, bp_envelope)
+ax4.plot(time_full, ch1_bp_recording)
+# ax4.plot(xnew, bp_envelope)
+ax4.plot(xnew_sec, bp_envelope)
 ax4.set_xlim([-1.5, 21.5])
 ax4.set_xlabel("Time (s)")
 ax4.set_ylabel("Amplitude")
@@ -213,19 +219,17 @@ plt.savefig("./plots/mov_rms.png", bbox_inches='tight')
 scaler = StandardScaler()
 bp_envelope_norm = scaler.fit_transform(bp_envelope.reshape(-1, 1))
 
-# Resampling to 1000 long signals to match blood pressure envelope length for cross-correlation
-resample_num = len(bp_envelope_norm)
-# resample_num = len(bp_envelope_norm) - int(fs) + 1
+# WIP Resampling to 1000 long signals to match blood pressure envelope length for cross-correlation
+# resample_num = len(bp_envelope_norm)
 
-dx = (1 / fs) * len(bandpass_rms) / resample_num
-new_fs = 1 / dx
+# dx = (1 / fs) * len(bandpass_rms) / resample_num
+# new_fs = 1 / dx
 
-filter_cutoff = 1
+filter_cutoff = 50
 
 # Ground-truth respiratory rate
 respiratory_freq = 0.25
 
-cross_corr_waveforms = np.zeros((num_models, num_chs, resample_num))
 cross_corr_all_chs   = np.zeros((num_models, num_chs))
 respir_rate_all_chs  = np.zeros((num_models, num_chs))
 mse_all_chs  = np.zeros((num_models, num_chs))
@@ -250,13 +254,23 @@ for ch in range(num_chs):
     vae_reconstr_rms_norm = vae_reconstr_rms_norm.flatten()
     n2n_reconstr_rms_norm = n2n_reconstr_rms_norm.flatten()
 
+    if ch == 0:
+        # Taking moving RMS windows later on will produce NaNs at start of array, so crop
+        # BP recording accordingly
+        # Only needs doing once, but needs size of "bandpass_rms_norm"
+        ignore_indices = bp_envelope_norm.shape[0] - bandpass_rms_norm.shape[0]
+        bp_envelope_norm = bp_envelope_norm[ignore_indices:]
+
+        # Preallocate array to store all RMS waveforms, based on new "bp_envelope_norm"
+        cross_corr_waveforms = np.zeros((num_models, num_chs, len(bp_envelope_norm)))
+    
     # Resample to same length and lowpass filter
-    bandpass_x_corr = butter_lowpass_filter(resample(bandpass_rms_norm, resample_num), filter_cutoff, new_fs)
-    vae_x_corr      = butter_lowpass_filter(resample(vae_reconstr_rms_norm, resample_num), filter_cutoff, new_fs)
-    n2n_x_corr      = butter_lowpass_filter(resample(n2n_reconstr_rms_norm, resample_num), filter_cutoff, new_fs)
-    # bandpass_x_corr = butter_lowpass_filter(bandpass_rms_norm, filter_cutoff, fs)
-    # vae_x_corr      = butter_lowpass_filter(vae_reconstr_rms_norm, filter_cutoff, fs)
-    # n2n_x_corr      = butter_lowpass_filter(n2n_reconstr_rms_norm, filter_cutoff, fs)
+    # bandpass_x_corr = butter_lowpass_filter(resample(bandpass_rms_norm, resample_num), filter_cutoff, new_fs)
+    # vae_x_corr      = butter_lowpass_filter(resample(vae_reconstr_rms_norm, resample_num), filter_cutoff, new_fs)
+    # n2n_x_corr      = butter_lowpass_filter(resample(n2n_reconstr_rms_norm, resample_num), filter_cutoff, new_fs)
+    bandpass_x_corr = butter_lowpass_filter(bandpass_rms_norm, filter_cutoff, fs)
+    vae_x_corr      = butter_lowpass_filter(vae_reconstr_rms_norm, filter_cutoff, fs)
+    n2n_x_corr      = butter_lowpass_filter(n2n_reconstr_rms_norm, filter_cutoff, fs)
 
     # Store waveforms for plotting later
     cross_corr_waveforms[0, ch, :] = bandpass_x_corr
@@ -279,9 +293,12 @@ for ch in range(num_chs):
     n2n_rms_peaks, _      = find_peaks(n2n_x_corr, prominence=0.8)
 
     # Find mean spacing between peaks, return as frequency (1/ time differences) to compare with 0.25 Hz
-    bandpass_peak_spacing = np.mean( 1 / (np.diff(bandpass_rms_peaks) / new_fs))
-    vae_peak_spacing      = np.mean( 1 / (np.diff(vae_rms_peaks) / new_fs))
-    n2n_peak_spacing      = np.mean( 1 / (np.diff(n2n_rms_peaks) / new_fs))
+    # bandpass_peak_spacing = np.mean( 1 / (np.diff(bandpass_rms_peaks) / new_fs))
+    # vae_peak_spacing      = np.mean( 1 / (np.diff(vae_rms_peaks) / new_fs))
+    # n2n_peak_spacing      = np.mean( 1 / (np.diff(n2n_rms_peaks) / new_fs))
+    bandpass_peak_spacing = np.mean( 1 / (np.diff(bandpass_rms_peaks) / fs))
+    vae_peak_spacing      = np.mean( 1 / (np.diff(vae_rms_peaks) / fs))
+    n2n_peak_spacing      = np.mean( 1 / (np.diff(n2n_rms_peaks) / fs))
 
     respir_rate_all_chs[0, ch] = abs((respiratory_freq - bandpass_peak_spacing) / respiratory_freq) * 100
     respir_rate_all_chs[1, ch] = abs((respiratory_freq - vae_peak_spacing) / respiratory_freq) * 100
@@ -318,6 +335,7 @@ plt.show()
 # Inputs to cross-correlation
 matplotlib.rcParams.update({'font.size': 13})
 time_xcorr = np.linspace(0, time_full[-1], len(bp_envelope_norm))
+
 plt.figure()
 plt.plot(time_xcorr, bp_envelope_norm, label="BP envelope", alpha=0.75, linestyle='-', linewidth=2)
 plt.plot(time_xcorr, np.mean(cross_corr_waveforms[0, :, :], axis=0), label="Bandpass", alpha=1, linestyle='--', linewidth=2)
@@ -331,7 +349,8 @@ plt.savefig('./plots/mov_rms_overlap.png')
 
 # Test
 plt.figure()
-plt.plot(resample(bandpass_rms_norm, resample_num))
+# plt.plot(resample(bandpass_rms_norm, resample_num))
+plt.plot(bandpass_rms_norm)
 plt.plot(cross_corr_waveforms[0, 8, :])
 plt.savefig('./plots/bandpass_filter_check.png')
 

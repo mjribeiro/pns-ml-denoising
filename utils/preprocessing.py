@@ -36,9 +36,11 @@ def drop_data(data, drop_start, win_len=1024) -> np.ndarray:
 
 def make_windows(data, window_count, num_channels, win_len):
     transposed_data = data.transpose(2, 0, 1)
-    windowed_data = transposed_data.reshape((window_count, num_channels, win_len, 2))
+    windowed_data = transposed_data.reshape((num_channels, window_count, win_len, 2))
 
-    return windowed_data
+    transposed_win_data = windowed_data.transpose(1, 0, 2, 3)
+
+    return transposed_win_data
 
 
 
@@ -101,6 +103,15 @@ def generate_datasets(data, bp_data, fs=100e3, num_channels=9, win_length=0.008)
         # Standardise mean and standard dev
         scaler = StandardScaler()
 
+        n2n_X_train[:, 0, ch] = remove_artefacts(n2n_X_train[:, 0, ch], threshold=2)
+        n2n_y_train[:, 0, ch] = remove_artefacts(n2n_y_train[:, 0, ch], threshold=2)
+
+        n2n_X_test[:, 0, ch]  = remove_artefacts(n2n_X_test[:, 0, ch], threshold=2)
+        n2n_y_test[:, 0, ch]  = remove_artefacts(n2n_y_test[:, 0, ch], threshold=2)
+
+        n2n_X_val[:, 0, ch]   = remove_artefacts(n2n_X_val[:, 0, ch], threshold=2)
+        n2n_y_val[:, 0, ch]   = remove_artefacts(n2n_y_val[:, 0, ch], threshold=2)
+        
         n2n_X_train[:, 0, ch] = scaler.fit_transform(np.asarray(n2n_X_train[:, 0, ch]).reshape(-1, 1)).flatten()
         n2n_y_train[:, 0, ch] = scaler.fit_transform(np.asarray(n2n_y_train[:, 0, ch]).reshape(-1, 1)).flatten()
 
@@ -111,14 +122,14 @@ def generate_datasets(data, bp_data, fs=100e3, num_channels=9, win_length=0.008)
         n2n_y_val[:, 0, ch]   = scaler.fit_transform(np.asarray(n2n_y_val[:, 0, ch]).reshape(-1, 1)).flatten()
 
         # Remove artefacts and rescale to [-1, 1]
-        n2n_X_train[:, 0, ch] = minmax_scaling(remove_artefacts(n2n_X_train[:, 0, ch], threshold=2))
-        n2n_y_train[:, 0, ch] = minmax_scaling(remove_artefacts(n2n_y_train[:, 0, ch], threshold=2))
+        n2n_X_train[:, 0, ch] = minmax_scaling(n2n_X_train[:, 0, ch])
+        n2n_y_train[:, 0, ch] = minmax_scaling(n2n_y_train[:, 0, ch])
 
-        n2n_X_test[:, 0, ch]  = minmax_scaling(remove_artefacts(n2n_X_test[:, 0, ch], threshold=2))
-        n2n_y_test[:, 0, ch]  = minmax_scaling(remove_artefacts(n2n_y_test[:, 0, ch], threshold=2))
+        n2n_X_test[:, 0, ch]  = minmax_scaling(n2n_X_test[:, 0, ch])
+        n2n_y_test[:, 0, ch]  = minmax_scaling(n2n_y_test[:, 0, ch])
 
-        n2n_X_val[:, 0, ch]   = minmax_scaling(remove_artefacts(n2n_X_val[:, 0, ch], threshold=2))
-        n2n_y_val[:, 0, ch]   = minmax_scaling(remove_artefacts(n2n_y_val[:, 0, ch], threshold=2))
+        n2n_X_val[:, 0, ch]   = minmax_scaling(n2n_X_val[:, 0, ch])
+        n2n_y_val[:, 0, ch]   = minmax_scaling(n2n_y_val[:, 0, ch])
     
     win_len = int(win_length*fs)
 

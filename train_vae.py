@@ -37,12 +37,14 @@ device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 wandb.init(project="PNS Denoising",
         config = {
             "learning_rate": 5e-3,
-            "epochs": 2000,
+            "epochs": 10,
             "batch_size": 2048,
             "kernel_size": 5,
-            "change_weights": False,
+            # "change_weights": False,
             "latent_dim": 120,
-            "early_stop": False})
+            "early_stop": False,
+            "MSE_envelope_weight": 0.25,
+            "KLD_weight": 0.375})
 
 config = wandb.config
 
@@ -55,7 +57,7 @@ test_dataset  = VagusDatasetN2N(stage="test")
 
 train_dataloader = DataLoader(train_dataset, batch_size=config.batch_size, shuffle=False)
 val_dataloader   = DataLoader(val_dataset, batch_size=config.batch_size, shuffle=False)
-test_dataloader  = DataLoader(test_dataset, batch_size=config.batch_size, shuffle=False, drop_last=True)
+test_dataloader  = DataLoader(test_dataset, batch_size=config.batch_size, shuffle=False)
 
 # sample = train_dataset.__getitem__(0)
 
@@ -90,35 +92,35 @@ def loss_function(x, x_hat, bp, device, epoch, idx, change_weights=False):
     MSE = mse_loss(x, x_hat)
     KLD = kld_loss(F.log_softmax(x, -1), F.softmax(x_hat, -1))
 
-    # Adapt loss based on current epoch
-    if change_weights:
-        loss_step = config.epochs - (config.epochs / 4)
-        loss_weight = np.linspace(0.01, 0.5, int(loss_step))
+    # # Adapt loss based on current epoch
+    # if change_weights:
+    #     loss_step = config.epochs - (config.epochs / 4)
+    #     loss_weight = np.linspace(0.01, 0.5, int(loss_step))
 
-        if epoch < (config.epochs / 4):
-            loss = (0.5 * MSE) + (0.5 * KLD)
-        else:
-            # Get moving RMS plots
-            bp_envelope, x_hat_moving_rms = get_rms_envelope(x_hat=x_hat, bp=bp, window_len=int(100e3), device=device)
+    #     if epoch < (config.epochs / 4):
+    #         loss = (0.5 * MSE) + (0.5 * KLD)
+    #     else:
+    #         # Get moving RMS plots
+    #         bp_envelope, x_hat_moving_rms = get_rms_envelope(x_hat=x_hat, bp=bp, window_len=int(100e3), device=device)
 
-            MSE_envelope = mse_loss(bp_envelope, x_hat_moving_rms)
+    #         MSE_envelope = mse_loss(bp_envelope, x_hat_moving_rms)
 
-            MSE_envelope_weight = loss_weight[idx]
-            MSE_reconstr_weight = 0.5 * (1 - MSE_envelope_weight)
-            KLD_weight = 0.5 * (1 - MSE_envelope_weight)
+    #         MSE_envelope_weight = loss_weight[idx]
+    #         MSE_reconstr_weight = 0.5 * (1 - MSE_envelope_weight)
+    #         KLD_weight = 0.5 * (1 - MSE_envelope_weight)
 
-            loss =  (MSE_envelope_weight * MSE_envelope) + (MSE_reconstr_weight * MSE) + (KLD_weight * KLD)
-    else:
-        # Get moving RMS plots
-        bp_envelope, x_hat_moving_rms = get_rms_envelope(x_hat=x_hat, bp=bp, window_len=int(100e3), device=device)
-        MSE_envelope = mse_loss(bp_envelope, x_hat_moving_rms)
+    #         loss =  (MSE_envelope_weight * MSE_envelope) + (MSE_reconstr_weight * MSE) + (KLD_weight * KLD)
+    # else:
+    # Get moving RMS plots
+    bp_envelope, x_hat_moving_rms = get_rms_envelope(x_hat=x_hat, bp=bp, window_len=int(100e3), device=device)
+    MSE_envelope = mse_loss(bp_envelope, x_hat_moving_rms)
 
-        MSE_envelope_weight = 0.5
-        KLD_weight          = 0.375
-        MSE_reconstr_weight = 1 - MSE_envelope_weight - KLD_weight
+    MSE_envelope_weight = config.MSE_envelope_weight
+    KLD_weight          = config.KLD_weight
+    MSE_reconstr_weight = 1 - MSE_envelope_weight - KLD_weight
 
-        loss =  (MSE_envelope_weight * MSE_envelope) + (MSE_reconstr_weight * MSE) + (KLD_weight * KLD)
-    
+    loss =  (MSE_envelope_weight * MSE_envelope) + (MSE_reconstr_weight * MSE) + (KLD_weight * KLD)
+
     return loss, KLD
 
 

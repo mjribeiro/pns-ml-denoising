@@ -38,11 +38,13 @@ def train():
     wandb.init(project="PNS Denoising",
             config = {
                 "learning_rate": 0.0001,
-                "epochs": 2000,
+                "epochs": 10,
                 "batch_size": 2048,
                 "kernel_size": 5,
                 "change_weights": False,
-                "early_stop": True})
+                "early_stop": False,
+                "MSE_envelope_weight": 0.5,
+                "MSE_reconstr_weight": 0.5})
 
     # Load vagus dataset
     train_dataset = VagusDatasetN2N(stage="train")
@@ -54,7 +56,7 @@ def train():
 
     train_dataloader = DataLoader(train_dataset, batch_size=config.batch_size, shuffle=False)
     val_dataloader   = DataLoader(val_dataset, batch_size=config.batch_size, shuffle=False)
-    test_dataloader  = DataLoader(test_dataset, batch_size=config.batch_size, shuffle=False, drop_last=True)
+    test_dataloader  = DataLoader(test_dataset, batch_size=config.batch_size, shuffle=False)
 
     sample, _, _ = train_dataset[0]
  
@@ -92,8 +94,8 @@ def train():
             bp_envelope, x_hat_moving_rms = get_rms_envelope(x_hat=x_hat, bp=bp, window_len=int(100e3), device=device)
             MSE_envelope = mse_loss(bp_envelope, x_hat_moving_rms)
 
-            MSE_envelope_weight = 0.25
-            MSE_reconstr_weight = 0.75
+            MSE_envelope_weight = config.MSE_envelope_weight
+            MSE_reconstr_weight = config.MSE_reconstr_weight
 
             loss =  (MSE_envelope_weight * MSE_envelope) + (MSE_reconstr_weight * MSE)
         
