@@ -29,7 +29,7 @@ def drop_data(data, drop_start, win_len=1024) -> np.ndarray:
     keep_data = data[drop_start:, :, :]
     window_count = len(keep_data) // win_len
     drop_end = len(keep_data) - (window_count * win_len)
-    keep_data = keep_data[:drop_end, :, :]
+    keep_data = keep_data[:-drop_end, :, :]
 
     return keep_data, window_count
 
@@ -145,8 +145,8 @@ def generate_datasets(data, bp_data, fs=100e3, num_channels=9, win_length=0.008)
         n2n_y_train_tmp, window_count = drop_data(n2n_y_train, i, win_len)
         n2n_y_train_tmp = make_windows(n2n_y_train_tmp, window_count, num_channels, win_len)
 
-        n2n_X_train_final = np.concatenate(n2n_X_train_final, n2n_X_train_tmp, axis=0)
-        n2n_y_train_final = np.concatenate(n2n_y_train_final, n2n_y_train_tmp, axis=0)
+        n2n_X_train_final = np.concatenate((n2n_X_train_final, n2n_X_train_tmp), axis=0)
+        n2n_y_train_final = np.concatenate((n2n_y_train_final, n2n_y_train_tmp), axis=0)
 
     n2n_X_train = n2n_X_train_final
     n2n_y_train = n2n_y_train_final
