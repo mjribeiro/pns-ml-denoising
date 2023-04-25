@@ -25,6 +25,23 @@ def calculate_cross_correlation(signal1, signal2):
     return np.corrcoef(signal1, signal2)
 
 
+def drop_data(data, drop_start, win_len=1024) -> np.ndarray:
+    keep_data = data[drop_start:, :, :]
+    window_count = len(keep_data) // win_len
+    drop_end = len(keep_data) - (window_count * win_len)
+    keep_data = keep_data[:drop_end, :, :]
+
+    return keep_data, window_count
+
+
+def make_windows(data, window_count, num_channels, win_len):
+    transposed_data = data.transpose(2, 0, 1)
+    windowed_data = transposed_data.reshape((window_count, num_channels, win_len, 2))
+
+    return windowed_data
+
+
+
 def extract_window(data, fs=100e3, start=0, win_length=0.008):
     """
     Takes a 1D array from a recording and returns 20s window
@@ -103,114 +120,60 @@ def generate_datasets(data, bp_data, fs=100e3, num_channels=9, win_length=0.008)
         n2n_X_val[:, 0, ch]   = minmax_scaling(remove_artefacts(n2n_X_val[:, 0, ch], threshold=2))
         n2n_y_val[:, 0, ch]   = minmax_scaling(remove_artefacts(n2n_y_val[:, 0, ch], threshold=2))
     
-    # Restructure data so it's in windows
-    test_window_count = int(len(n2n_X_test[:, 0, 0]) // (win_length*fs))
-    val_window_count = int(len(n2n_X_val[:, 0, 0]) // (win_length*fs))
-    train_window_count = int(len(n2n_X_train[:, 0, 0]) // (win_length*fs))
+    win_len = int(win_length*fs)
 
-    # Which parts of the window to keep - recording doesn't split evenly into windows of win_length
-    test_window_keep = int(test_window_count * (win_length*fs))
-    val_window_keep = int(val_window_count * (win_length*fs))
-    train_window_keep = int(train_window_count * (win_length*fs))
-    
-    # Drop data points that won't fit into windows
-    n2n_X_train = n2n_X_train[:train_window_keep, :, :]
-    n2n_y_train = n2n_y_train[:train_window_keep, :, :]
+    # Get windows of data for validation and test, omitting any data that wouldn't fit
+    n2n_X_test, window_count = drop_data(n2n_X_test, 0, win_len)
+    n2n_X_test = make_windows(n2n_X_test, window_count, num_channels, win_len)
+    n2n_y_test, window_count = drop_data(n2n_y_test, 0, win_len)
+    n2n_y_test = make_windows(n2n_y_test, window_count, num_channels, win_len)
+    n2n_X_val, window_count = drop_data(n2n_X_val, 0, win_len)
+    n2n_X_val = make_windows(n2n_X_val, window_count, num_channels, win_len)
+    n2n_y_val, window_count = drop_data(n2n_y_val, 0, win_len)
+    n2n_y_val = make_windows(n2n_y_val, window_count, num_channels, win_len)
 
-    n2n_X_test = n2n_X_test[:test_window_keep, :, :]
-    n2n_y_test = n2n_y_test[:test_window_keep, :, :]
+    # Get windows and augment training data
+    n2n_X_train, window_count = drop_data(n2n_X_train, 0, win_len)
+    n2n_X_train_final = make_windows(n2n_X_train, window_count, num_channels, win_len)
+    n2n_y_train, window_count = drop_data(n2n_y_train, 0, win_len)
+    n2n_y_train_final = make_windows(n2n_y_train, window_count, num_channels, win_len)
 
-    n2n_X_val = n2n_X_val[:val_window_keep, :, :]
-    n2n_y_val = n2n_y_val[:val_window_keep, :, :]
+    num_augmentation = 2 ** 2
+    for i in range(win_len // num_augmentation, win_len, win_len // num_augmentation):
+        n2n_X_train_tmp, window_count = drop_data(n2n_X_train, i, win_len)
+        n2n_X_train_tmp = make_windows(n2n_X_train_tmp, window_count, num_channels, win_len)
+        n2n_y_train_tmp, window_count = drop_data(n2n_y_train, i, win_len)
+        n2n_y_train_tmp = make_windows(n2n_y_train_tmp, window_count, num_channels, win_len)
 
-    # Transpose data prior to reshaping into windows so each window has correct time points
-    n2n_X_train = n2n_X_train.transpose(2, 0, 1)
-    n2n_y_train = n2n_y_train.transpose(2, 0, 1)
-    n2n_X_test = n2n_X_test.transpose(2, 0, 1)
-    n2n_y_test = n2n_y_test.transpose(2, 0, 1)
-    n2n_X_val = n2n_X_val.transpose(2, 0, 1)
-    n2n_y_val = n2n_y_val.transpose(2, 0, 1)
+        n2n_X_train_final = np.concatenate(n2n_X_train_final, n2n_X_train_tmp, axis=0)
+        n2n_y_train_final = np.concatenate(n2n_y_train_final, n2n_y_train_tmp, axis=0)
 
-    # Reshape array into windows instead of long recording
-    n2n_X_train = n2n_X_train.reshape((train_window_count, num_channels, int(win_length*fs), 2))
-    n2n_y_train = n2n_y_train.reshape((train_window_count, num_channels, int(win_length*fs), 2))
+    n2n_X_train = n2n_X_train_final
+    n2n_y_train = n2n_y_train_final
 
-    n2n_X_test  = n2n_X_test.reshape((test_window_count, num_channels, int(win_length*fs), 2))
-    n2n_y_test  = n2n_y_test.reshape((test_window_count, num_channels, int(win_length*fs), 2))
+    # # Create new input and target variables with point swaps (Data augmentation following Calvarons 2021 paper)
+    # noisy_inputs_arr  = np.zeros((len(n2n_X_train) * 2, num_channels, int(win_length*fs), 2))
+    # noisy_targets_arr = np.zeros((len(n2n_y_train) * 2, num_channels, int(win_length*fs), 2))
 
-    n2n_X_val   = n2n_X_val.reshape((val_window_count, num_channels, int(win_length*fs), 2))
-    n2n_y_val   = n2n_y_val.reshape((val_window_count, num_channels, int(win_length*fs), 2))
+    # # Store original inputs/targets
+    # noisy_inputs_arr[:len(n2n_X_train)] = n2n_X_train
+    # noisy_targets_arr[:len(n2n_y_train)] = n2n_y_train
 
-    # Create new input and target variables with point swaps (Data augmentation following Calvarons 2021 paper)
-    noisy_inputs_arr  = np.zeros((len(n2n_X_train) * 2, num_channels, int(win_length*fs), 2))
-    noisy_targets_arr = np.zeros((len(n2n_y_train) * 2, num_channels, int(win_length*fs), 2))
-
-    # Store original inputs/targets
-    noisy_inputs_arr[:len(n2n_X_train)] = n2n_X_train
-    noisy_targets_arr[:len(n2n_y_train)] = n2n_y_train
-
-    for input, target, idx in zip(n2n_X_train, n2n_y_train, range(len(n2n_X_train), len(n2n_y_train) * 2)):
-        # Pick arbitrary index for points to swap
-        rand_idx = random.randrange(len(input[ch, :, 0]))
+    # for input, target, idx in zip(n2n_X_train, n2n_y_train, range(len(n2n_X_train), len(n2n_y_train) * 2)):
+    #     # Pick arbitrary index for points to swap
+    #     rand_idx = random.randrange(len(input[ch, :, 0]))
         
-        for ch in range(num_channels):
-            # Swap at specific index
-            input[ch, rand_idx, 0], target[ch, rand_idx, 0] = target[ch, rand_idx, 0], input[ch, rand_idx, 0]
+    #     for ch in range(num_channels):
+    #         # Swap at specific index
+    #         input[ch, rand_idx, 0], target[ch, rand_idx, 0] = target[ch, rand_idx, 0], input[ch, rand_idx, 0]
 
-            # Store in relevant arrays
-            noisy_inputs_arr[idx, ch, :, :] = input[ch, rand_idx]
-            noisy_targets_arr[idx, ch, :, :] = target[ch, rand_idx]
+    #         # Store in relevant arrays
+    #         noisy_inputs_arr[idx, ch, :, :] = input[ch, rand_idx]
+    #         noisy_targets_arr[idx, ch, :, :] = target[ch, rand_idx]
 
-    print("Finished preparing data for Noise2Noise model...")
-    n2n_X_train = noisy_inputs_arr
-    n2n_y_train = noisy_targets_arr
-
-    # print("Extracting blood pressure windows...")
-    # vagus_bp_data = generate_bp_windows(bp_data=bp_data,
-    #                                     fs=fs,
-    #                                     win_length=win_length)
-    
-    # print("Extracting ENG windows...")
-    # n2n_X_train_final = np.zeros((num_windows, num_channels, int(win_length*fs), 2))
-    # n2n_y_train_final = np.zeros((num_windows, num_channels, int(win_length*fs), 2))
-
-    # n2n_X_train_final = np.zeros((num_windows, num_channels, int(win_length*fs), 2))
-    # n2n_X_train_final = np.zeros((num_windows, num_channels, int(win_length*fs), 2))
-
-    # n2n_X_train_final = np.zeros((num_windows, num_channels, int(win_length*fs), 2))
-    # n2n_X_train_final = np.zeros((num_windows, num_channels, int(win_length*fs), 2))
-
-
-    # for column, ch in zip(all_columns[1:], range(len(all_columns[1:]))):
-    #     store_index = 0
-    #     channel_data = data[column]
-
-    #     # # Standardise mean and standard dev
-    #     # scaler = StandardScaler()
-
-    #     # channel_data = scaler.fit_transform(np.asarray(channel_data).reshape(-1, 1))
-
-    #     # Remove artefacts and rescale to [-1, 1]
-    #     channel_data = minmax_scaling(remove_artefacts(channel_data, threshold=2))
-    #     channel_data_wide_filt = bandpass_filter(channel_data, freqs=[500, 49.9e3])
-    #     channel_data_narrow_filt = bandpass_filter(channel_data, freqs=[250, 10e3])
-
-    #     for search_index in range(0, len(channel_data), int(win_length*fs)):
-
-    #         extracted_win_raw         = extract_window(channel_data, fs=fs, start=search_index, win_length=win_length)
-    #         extracted_win_wide_filt   = extract_window(channel_data_wide_filt, fs=fs, start=search_index, win_length=win_length)
-    #         extracted_win_narrow_filt = extract_window(channel_data_narrow_filt, fs=fs, start=search_index, win_length=win_length)
-
-    #         if len(extracted_win_raw) < (int(win_length*fs)):
-    #             break
-            
-    #         vagus_data_raw[store_index, ch, :, :]         = np.asarray([extracted_win_raw.flatten(), vagus_bp_data[store_index, :]]).T
-    #         vagus_data_filt_wide[store_index, ch, :, :]   = np.asarray([extracted_win_wide_filt.flatten(), vagus_bp_data[store_index, :]]).T
-    #         vagus_data_filt_narrow[store_index, ch, :, :] = np.asarray([extracted_win_narrow_filt.flatten(), vagus_bp_data[store_index, :]]).T
-
-    #         store_index += 1
-
-    # print("Concatenated ENG and blood pressure data into one dataset...")
+    # print("Finished preparing data for Noise2Noise model...")
+    # n2n_X_train = noisy_inputs_arr
+    # n2n_y_train = noisy_targets_arr
 
     # return vagus_data_raw, vagus_data_filt_wide, vagus_data_filt_narrow
     return n2n_X_train, n2n_X_val, n2n_X_test, n2n_y_train, n2n_y_val, n2n_y_test

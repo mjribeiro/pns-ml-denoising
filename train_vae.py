@@ -8,7 +8,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import wandb
 
-from torch.optim import Adam
+from torch.optim import AdamW
 from torch.utils.data import DataLoader
 
 # Temp
@@ -37,7 +37,7 @@ device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 wandb.init(project="PNS Denoising",
         config = {
             "learning_rate": 5e-3,
-            "epochs": 500,
+            "epochs": 2000,
             "batch_size": 2048,
             "kernel_size": 5,
             "change_weights": False,
@@ -113,7 +113,7 @@ def loss_function(x, x_hat, bp, device, epoch, idx, change_weights=False):
         bp_envelope, x_hat_moving_rms = get_rms_envelope(x_hat=x_hat, bp=bp, window_len=int(100e3), device=device)
         MSE_envelope = mse_loss(bp_envelope, x_hat_moving_rms)
 
-        MSE_envelope_weight = 0.25
+        MSE_envelope_weight = 0.5
         KLD_weight          = 0.375
         MSE_reconstr_weight = 1 - MSE_envelope_weight - KLD_weight
 
@@ -122,8 +122,9 @@ def loss_function(x, x_hat, bp, device, epoch, idx, change_weights=False):
     return loss, KLD
 
 
-optimizer = Adam(model.parameters(), 
-                lr=config.learning_rate)
+optimizer = AdamW(model.parameters(), 
+                  lr=config.learning_rate,
+                  weight_decay=0.01)
 wandb.watch(model, log="all")
 
 # Training
@@ -199,7 +200,7 @@ for epoch in range(config.epochs):
             best_loss = average_loss
             best_loss_epoch = epoch
 
-        if epoch > best_loss_epoch + 20:
+        if epoch > best_loss_epoch + config.epochs // 5:
             break
         
 print("Finished!")

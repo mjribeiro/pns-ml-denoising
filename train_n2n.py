@@ -10,7 +10,7 @@ import wandb
 import random
 
 from pathlib import Path
-from torch.optim import Adam
+from torch.optim import AdamW
 from torch.utils.data import DataLoader
 
 # Local imports
@@ -42,7 +42,7 @@ def train():
                 "batch_size": 2048,
                 "kernel_size": 5,
                 "change_weights": False,
-                "early_stop": False})
+                "early_stop": True})
 
     # Load vagus dataset
     train_dataset = VagusDatasetN2N(stage="train")
@@ -100,8 +100,9 @@ def train():
         return loss
 
 
-    optimizer = Adam(model.parameters(),
-                     lr=config.learning_rate)
+    optimizer = AdamW(model.parameters(),
+                      lr=config.learning_rate,
+                      weight_decay=0.01)
     wandb.watch(model, log="all")
 
     # Training
@@ -177,7 +178,7 @@ def train():
                 best_loss = average_loss
                 best_loss_epoch = epoch
 
-            if epoch > best_loss_epoch + 20:
+            if epoch > best_loss_epoch + config.epochs // 5:
                 break
 
     print("Finished!")
