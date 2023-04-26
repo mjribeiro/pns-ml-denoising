@@ -3,7 +3,7 @@ import pandas as pd
 import torch
 import torch.fft as fft
 
-from scipy.interpolate import PchipInterpolator
+from scipy.interpolate import PchipInterpolator, make_interp_spline
 from scipy.signal import butter, filtfilt, find_peaks, resample
 from sklearn.preprocessing import StandardScaler
 
@@ -60,15 +60,15 @@ def extract_resp_envelope(bp_data, len_data, device, num_chs=9):
     # peaks_x = [x/fs for x in peaks]
 
     # Create spline
-    # spl = make_interp_spline(peaks, bp_data[peaks], k=2)
-    spl = PchipInterpolator(peaks, bp_data[peaks])
+    spl = make_interp_spline(peaks, bp_data[peaks])
+    # spl = PchipInterpolator(peaks, bp_data[peaks])
 
     xnew = np.linspace(min(peaks), max(peaks), len_data)
     spl_y = spl(xnew)
     # spl_y = moving_average(spl_y, n=100)
 
     # Lowpass filter envelope so it's smoother
-    # resp_envelope = butter_lowpass_filter(spl_y, 15, 100e3)
+    resp_envelope = butter_lowpass_filter(spl_y, 100, 100e3)
     resp_envelope = spl_y
 
     # Prep BP data here

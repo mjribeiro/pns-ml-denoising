@@ -134,27 +134,31 @@ def generate_datasets(data, bp_data, fs=100e3, num_channels=9, win_length=0.008)
     win_len = int(win_length*fs)
 
     # Get windows of data for validation and test, omitting any data that wouldn't fit
-    n2n_X_test, window_count = drop_data(n2n_X_test, 0, win_len)
-    n2n_X_test = make_windows(n2n_X_test, window_count, num_channels, win_len)
-    n2n_y_test, window_count = drop_data(n2n_y_test, 0, win_len)
-    n2n_y_test = make_windows(n2n_y_test, window_count, num_channels, win_len)
-    n2n_X_val, window_count = drop_data(n2n_X_val, 0, win_len)
-    n2n_X_val = make_windows(n2n_X_val, window_count, num_channels, win_len)
-    n2n_y_val, window_count = drop_data(n2n_y_val, 0, win_len)
-    n2n_y_val = make_windows(n2n_y_val, window_count, num_channels, win_len)
+    n2n_X_test, window_count_X = drop_data(n2n_X_test, 0, win_len)
+    n2n_X_test = make_windows(n2n_X_test, window_count_X, num_channels, win_len)
+    n2n_y_test, window_count_y = drop_data(n2n_y_test, 0, win_len)
+    n2n_y_test = make_windows(n2n_y_test, window_count_y, num_channels, win_len)
+    assert window_count_X == window_count_y
+    n2n_X_val, window_count_X = drop_data(n2n_X_val, 0, win_len)
+    n2n_X_val = make_windows(n2n_X_val, window_count_X, num_channels, win_len)
+    n2n_y_val, window_count_y = drop_data(n2n_y_val, 0, win_len)
+    n2n_y_val = make_windows(n2n_y_val, window_count_y, num_channels, win_len)
+    assert window_count_X == window_count_y
 
     # Get windows and augment training data
-    n2n_X_train, window_count = drop_data(n2n_X_train, 0, win_len)
-    n2n_X_train_final = make_windows(n2n_X_train, window_count, num_channels, win_len)
-    n2n_y_train, window_count = drop_data(n2n_y_train, 0, win_len)
-    n2n_y_train_final = make_windows(n2n_y_train, window_count, num_channels, win_len)
+    n2n_X_train, window_count_X = drop_data(n2n_X_train, 0, win_len)
+    n2n_X_train_final = make_windows(n2n_X_train, window_count_X, num_channels, win_len)
+    n2n_y_train, window_count_y = drop_data(n2n_y_train, 0, win_len)
+    n2n_y_train_final = make_windows(n2n_y_train, window_count_y, num_channels, win_len)
+    assert window_count_X == window_count_y
 
     num_augmentation = 2 ** 2
     for i in range(win_len // num_augmentation, win_len, win_len // num_augmentation):
-        n2n_X_train_tmp, window_count = drop_data(n2n_X_train, i, win_len)
-        n2n_X_train_tmp = make_windows(n2n_X_train_tmp, window_count, num_channels, win_len)
-        n2n_y_train_tmp, window_count = drop_data(n2n_y_train, i, win_len)
-        n2n_y_train_tmp = make_windows(n2n_y_train_tmp, window_count, num_channels, win_len)
+        n2n_X_train_tmp, window_count_X = drop_data(n2n_X_train, i, win_len)
+        n2n_X_train_tmp = make_windows(n2n_X_train_tmp, window_count_X, num_channels, win_len)
+        n2n_y_train_tmp, window_count_y = drop_data(n2n_y_train, i, win_len)
+        n2n_y_train_tmp = make_windows(n2n_y_train_tmp, window_count_y, num_channels, win_len)
+        assert window_count_X == window_count_y
 
         n2n_X_train_final = np.concatenate((n2n_X_train_final, n2n_X_train_tmp), axis=0)
         n2n_y_train_final = np.concatenate((n2n_y_train_final, n2n_y_train_tmp), axis=0)
