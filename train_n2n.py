@@ -37,14 +37,15 @@ def train():
     # Weights&Biases initialisation
     wandb.init(project="PNS Denoising",
             config = {
-                "learning_rate": 0.0001,
-                "epochs": 1000,
+                "learning_rate": 5e-3,
+                "epochs": 100,
                 "batch_size": 2048,
-                "kernel_size": 5,
+                "kernel_size": 13,
                 "change_weights": False,
                 "early_stop": False,
                 "MSE_envelope_weight": 0.5,
-                "MSE_reconstr_weight": 0.5})
+                "MSE_reconstr_weight": 0.5,
+                "save_best": False})
 
     wandb.init(project="PNS Denoising")
     config = wandb.config
@@ -104,7 +105,7 @@ def train():
 
     optimizer = AdamW(model.parameters(),
                       lr=config.learning_rate,
-                      weight_decay=0.01)
+                      weight_decay=1e-7)
     wandb.watch(model, log="all")
 
     # Training
@@ -174,14 +175,18 @@ def train():
         if epoch >= (config.epochs / 4): 
             idx += 1
 
-        if config.early_stop:
+        if config.save_best or config.early_stop:
             if loss < best_loss:
                 best_model = copy.deepcopy(model)
                 best_loss = average_loss
                 best_loss_epoch = epoch
+        
+        if config.early_stop and (epoch > best_loss_epoch + config.epochs // 10):
+            break
 
-            if epoch > best_loss_epoch + config.epochs // 5:
-                break
+        # If loss goes to NaN, break out of loop regardless of early stopping
+        if torch.isnan(loss):
+            break
 
     print("Finished!")
     print('Training finished, took {:.2f}s'.format(time.time() - training_start_time))
@@ -189,7 +194,7 @@ def train():
     Path('./saved/').mkdir(parents=True, exist_ok=True)
     # torch.save(best_model.state_dict(), './saved/noise2noise.pth')
 
-    if config.early_stop:
+    if config.save_best or config.early_stop:
         model = best_model
 
     
@@ -250,10 +255,9 @@ train()
 #         'name': 'val_loss'
 #         },
 #     'parameters': {
-#         'batch_size': {'values': [1024]},
-#         'epochs': {'max': 500, 'min': 10},
-#         'learning_rate': {'distribution': 'inv_log_uniform_values', 'max': 0.1, 'min': 0.000001},
-#         'kernel_size': {'values': [1, 3, 5, 7, 9]}
+#         'epochs': {'max': 2000, 'min': 100},
+#         'learning_rate': {'distribution': 'inv_log_uniform_values', 'max': 0.005, 'min': 0.0001},
+#         'kernel_size': {'values': [5, 7, 9, 11, 13, 15, 17, 19, 21]}
 #     }
 # }
 

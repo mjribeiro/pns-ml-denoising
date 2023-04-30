@@ -152,7 +152,7 @@ def generate_datasets(data, bp_data, fs=100e3, num_channels=9, win_length=0.008)
     n2n_y_train_final = make_windows(n2n_y_train, window_count_y, num_channels, win_len)
     assert window_count_X == window_count_y
 
-    num_augmentation = 2 ** 2
+    num_augmentation = 2 ** 1
     for i in range(win_len // num_augmentation, win_len, win_len // num_augmentation):
         n2n_X_train_tmp, window_count_X = drop_data(n2n_X_train, i, win_len)
         n2n_X_train_tmp = make_windows(n2n_X_train_tmp, window_count_X, num_channels, win_len)

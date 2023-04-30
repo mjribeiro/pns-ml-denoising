@@ -37,14 +37,15 @@ def train():
     wandb.init(project="PNS Denoising",
             config = {
                 "learning_rate": 5e-3,
-                "epochs": 2,
+                "epochs": 500,
                 "batch_size": 2048,
-                "kernel_size": 5,
+                "kernel_size": 13,
                 "change_weights": False,
-                "latent_dim": 120,
-                "early_stop": False,
-                "MSE_envelope_weight": 0.5,
-                "KLD_weight": 0.375})
+                "latent_dim": 50,
+                "early_stop": True,
+                "MSE_envelope_weight": 0.25,
+                "KLD_weight": 0.2,
+                "save_best": True})
 
     config = wandb.config
 
@@ -126,7 +127,7 @@ def train():
 
     optimizer = AdamW(model.parameters(), 
                     lr=config.learning_rate,
-                    weight_decay=0.01)
+                    weight_decay=1e-7)
     wandb.watch(model, log="all")
 
     # Training
@@ -196,20 +197,24 @@ def train():
         if epoch >= (config.epochs / 4): 
             idx += 1
 
-        if config.early_stop:
+        if config.save_best or config.early_stop:
             if loss < best_loss:
                 best_model = copy.deepcopy(model)
                 best_loss = average_loss
                 best_loss_epoch = epoch
+        
+        if config.early_stop and (epoch > best_loss_epoch + config.epochs // 10):
+            break
 
-            if epoch > best_loss_epoch + config.epochs // 5:
-                break
+        # If loss goes to NaN, break out of loop regardless of early stopping
+        if torch.isnan(loss):
+            break
             
     print("Finished!")
     print('Training finished, took {:.2f}s'.format(time.time() - training_start_time))
 
     # TODO: Folder needs to be created/checked if exists before using torch.save()
-    if config.early_stop:
+    if config.save_best or config.early_stop:
         model = best_model
         
     PATH = './saved/coordinate_vae.pth'
@@ -245,17 +250,17 @@ def train():
             end_idx += config.batch_size
 
     # x = x.view(16, 1, input_dim)
-    ax = plt.gca()
+    fig, ax = plt.subplots()
 
     time_plot = np.arange(0, len(xs[:, 0, :].flatten())/100e3, 1/100e3)
-    plt.plot(time_plot, xs[:, 0, :].flatten())
-    plt.plot(time_plot, x_hats[:, 0, :].flatten())
-    plt.plot(time_plot, bp_arr[:, 0, :].flatten())
-    plt.xlabel("Time (s)")
-    plt.ylabel("Amplitude (AU, normalised)")
+    ax.plot(time_plot, xs[:, 0, :].flatten(), label=f"Noisy input")
+    ax.plot(time_plot, x_hats[:, 0, :].flatten(), label=f"Reconstructed")
+    ax.plot(time_plot, bp_arr[:, 0, :].flatten(), label=f'Blood pressure')
+    ax.xlabel("Time (s)")
+    ax.ylabel("Amplitude (AU, normalised)")
 
-    plt.rcParams.update({'font.size': 22})
-    plt.show()
+    # plt.rcParams.update({'font.size': 22})
+    # plt.show()
 
     for i in range(9):
         np.save(f"./results/cvae_noisy_input_ch{i+1}.npy", xs[:, i, :].flatten())
@@ -263,25 +268,23 @@ def train():
 
     wandb.finish()
 
-# train()
+train()
 
 # ----- HYPERPARAMETER OPT -----
-sweep_configuration = {
-    'method': 'bayes',
-    'metric': {
-        'goal': 'minimize',
-        'name': 'val_loss'
-        },
-    'parameters': {
-        'epochs': {'max': 2000, 'min': 500},
-        'learning_rate': {'distribution': 'inv_log_uniform_values', 'max': 0.1, 'min': 0.000001},
-        'kernel_size': {'values': [1, 3, 5, 7, 9]},
-        'latent_dim': {'values': [50, 80, 100, 120]},
-        'MSE_envelope_weight': {'max': 0.75, 'min': 0.15},
-        'KLD_weight': {'max': 0.5, 'min': 0.1}
-    }
-}
+# sweep_configuration = {
+#     'method': 'bayes',
+#     'metric': {
+#         'goal': 'minimize',
+#         'name': 'val_loss'
+#         },
+#     'parameters': {
+#         'epochs': {'max': 2000, 'min': 100},
+#         'learning_rate': {'distribution': 'inv_log_uniform_values', 'max': 0.01, 'min': 0.00001},
+#         'kernel_size': {'values': [5, 7, 9, 11, 13, 15, 17, 19, 21]},
+#         'latent_dim': {'values': [50, 80, 100, 120]},
+#     }
+# }
 
-sweep_id = wandb.sweep(sweep=sweep_configuration, project="PNS Denoising")
+# sweep_id = wandb.sweep(sweep=sweep_configuration, project="PNS Denoising")
 
-wandb.agent(sweep_id, train)
+# wandb.agent(sweep_id, train)

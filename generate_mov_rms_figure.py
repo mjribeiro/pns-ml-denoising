@@ -129,14 +129,14 @@ ax1.set_ylabel("Amplitude (norm.)")
 ax1.set_ylim([-1.2, 1.2])
 
 # 2) VAE data
-ax2.plot(zoom_time, zoom_vae_noisy, alpha=0.3)
+ax2.plot(zoom_time, orig_filtered_win, alpha=0.3)
 ax2.plot(zoom_time, zoom_vae_reconstr)
 ax2.set_xlabel("Time (s)")
 # ax2.set_ylabel("Amplitude (norm.)")
 ax2.set_ylim([-1.2, 1.2])
 
 # 3) N2N data
-ax3.plot(zoom_time, zoom_n2n_noisy, alpha=0.3)
+ax3.plot(zoom_time, orig_filtered_win, alpha=0.3)
 ax3.plot(zoom_time, zoom_n2n_reconstr)
 ax3.set_xlabel("Time (s)")
 # ax3.set_ylabel("Amplitude (norm.)")
@@ -184,7 +184,8 @@ ax4.set_xlabel("Time (s)")
 ax4.set_ylabel("Amplitude")
 
 # 5) Moving RMS window of bandpass filtered data
-N_BANDPASS = int(1000e-3 * fs) # 1000 ms in samples
+mov_rms_time = 1000e-3
+N_BANDPASS = int(mov_rms_time * fs) # 1000 ms in samples
 bandpass_rms = rolling_rms(orig_filtered, N_BANDPASS)
 ax5.plot(time_full, bandpass_rms)
 ax5.set_xlim([-1.5, 21.5])
@@ -192,8 +193,8 @@ ax5.set_xlabel("Time (s)")
 # ax5.set_ylabel("Amplitude (norm.)")
 
 # 6) Moving RMS window of whole data
-N_VAE = int(1000e-3 * fs) # 1000 ms in samples
-N_N2N = int(1000e-3 * fs) # 1000 ms in samples
+N_VAE = int(mov_rms_time * fs) # 1000 ms in samples
+N_N2N = int(mov_rms_time * fs) # 1000 ms in samples
 
 # 6) VAE
 vae_reconstr_ch_rms = rolling_rms(vae_reconstr[:, select_ch], N_VAE)
@@ -220,12 +221,14 @@ scaler = StandardScaler()
 bp_envelope_norm = scaler.fit_transform(bp_envelope.reshape(-1, 1))
 
 # WIP Resampling to 1000 long signals to match blood pressure envelope length for cross-correlation
+resample_num = 1000
 # resample_num = len(bp_envelope_norm)
 
-# dx = (1 / fs) * len(bandpass_rms) / resample_num
-# new_fs = 1 / dx
+dx = (1 / fs) * len(bandpass_rms) / resample_num
+new_fs = 1 / dx
 
-filter_cutoff = 50
+# filter_cutoff = 50
+filter_cutoff = 1
 
 # Ground-truth respiratory rate
 respiratory_freq = 0.25
@@ -262,28 +265,30 @@ for ch in range(num_chs):
         bp_envelope_norm = bp_envelope_norm[ignore_indices:]
 
         # Preallocate array to store all RMS waveforms, based on new "bp_envelope_norm"
-        cross_corr_waveforms = np.zeros((num_models, num_chs, len(bp_envelope_norm)))
+        cross_corr_waveforms = np.zeros((num_models, num_chs, resample_num))
+        # cross_corr_waveforms = np.zeros((num_models, num_chs, len(bp_envelope_norm)))
     
     # Resample to same length and lowpass filter
-    # bandpass_x_corr = butter_lowpass_filter(resample(bandpass_rms_norm, resample_num), filter_cutoff, new_fs)
-    # vae_x_corr      = butter_lowpass_filter(resample(vae_reconstr_rms_norm, resample_num), filter_cutoff, new_fs)
-    # n2n_x_corr      = butter_lowpass_filter(resample(n2n_reconstr_rms_norm, resample_num), filter_cutoff, new_fs)
-    bandpass_x_corr = butter_lowpass_filter(bandpass_rms_norm, filter_cutoff, fs)
-    vae_x_corr      = butter_lowpass_filter(vae_reconstr_rms_norm, filter_cutoff, fs)
-    n2n_x_corr      = butter_lowpass_filter(n2n_reconstr_rms_norm, filter_cutoff, fs)
+    bandpass_x_corr = butter_lowpass_filter(resample(bandpass_rms_norm, resample_num), filter_cutoff, new_fs)
+    vae_x_corr      = butter_lowpass_filter(resample(vae_reconstr_rms_norm, resample_num), filter_cutoff, new_fs)
+    n2n_x_corr      = butter_lowpass_filter(resample(n2n_reconstr_rms_norm, resample_num), filter_cutoff, new_fs)
+    # bandpass_x_corr = butter_lowpass_filter(bandpass_rms_norm, filter_cutoff, fs)
+    # vae_x_corr      = butter_lowpass_filter(vae_reconstr_rms_norm, filter_cutoff, fs)
+    # n2n_x_corr      = butter_lowpass_filter(n2n_reconstr_rms_norm, filter_cutoff, fs)
 
+    
     # Store waveforms for plotting later
     cross_corr_waveforms[0, ch, :] = bandpass_x_corr
     cross_corr_waveforms[1, ch, :] = vae_x_corr
     cross_corr_waveforms[2, ch, :] = n2n_x_corr
 
     # CROSS-CORRELATION
-    cross_corr_all_chs[0, ch] = np.corrcoef(bp_envelope_norm.ravel(), bandpass_x_corr)[0,1]
-    cross_corr_all_chs[1, ch] = np.corrcoef(bp_envelope_norm.ravel(), vae_x_corr)[0,1]
-    cross_corr_all_chs[2, ch] = np.corrcoef(bp_envelope_norm.ravel(), n2n_x_corr)[0,1]
-    # cross_corr_all_chs[0, ch] = np.corrcoef(resample(bp_envelope_norm, resample_num).ravel(), bandpass_x_corr)[0,1]
-    # cross_corr_all_chs[1, ch] = np.corrcoef(resample(bp_envelope_norm, resample_num).ravel(), vae_x_corr)[0,1]
-    # cross_corr_all_chs[2, ch] = np.corrcoef(resample(bp_envelope_norm, resample_num).ravel(), n2n_x_corr)[0,1]
+    # cross_corr_all_chs[0, ch] = np.corrcoef(bp_envelope_norm.ravel(), bandpass_x_corr)[0,1]
+    # cross_corr_all_chs[1, ch] = np.corrcoef(bp_envelope_norm.ravel(), vae_x_corr)[0,1]
+    # cross_corr_all_chs[2, ch] = np.corrcoef(bp_envelope_norm.ravel(), n2n_x_corr)[0,1]
+    cross_corr_all_chs[0, ch] = np.corrcoef(resample(bp_envelope_norm, resample_num).ravel(), bandpass_x_corr)[0,1]
+    cross_corr_all_chs[1, ch] = np.corrcoef(resample(bp_envelope_norm, resample_num).ravel(), vae_x_corr)[0,1]
+    cross_corr_all_chs[2, ch] = np.corrcoef(resample(bp_envelope_norm, resample_num).ravel(), n2n_x_corr)[0,1]
 
 
     # CHECKING RESPIRATORY RATE
@@ -293,21 +298,25 @@ for ch in range(num_chs):
     n2n_rms_peaks, _      = find_peaks(n2n_x_corr, prominence=0.8)
 
     # Find mean spacing between peaks, return as frequency (1/ time differences) to compare with 0.25 Hz
-    # bandpass_peak_spacing = np.mean( 1 / (np.diff(bandpass_rms_peaks) / new_fs))
-    # vae_peak_spacing      = np.mean( 1 / (np.diff(vae_rms_peaks) / new_fs))
-    # n2n_peak_spacing      = np.mean( 1 / (np.diff(n2n_rms_peaks) / new_fs))
-    bandpass_peak_spacing = np.mean( 1 / (np.diff(bandpass_rms_peaks) / fs))
-    vae_peak_spacing      = np.mean( 1 / (np.diff(vae_rms_peaks) / fs))
-    n2n_peak_spacing      = np.mean( 1 / (np.diff(n2n_rms_peaks) / fs))
+    bandpass_peak_spacing = np.mean( 1 / (np.diff(bandpass_rms_peaks) / new_fs))
+    vae_peak_spacing      = np.mean( 1 / (np.diff(vae_rms_peaks) / new_fs))
+    n2n_peak_spacing      = np.mean( 1 / (np.diff(n2n_rms_peaks) / new_fs))
+    # TODO: Check only four peaks are found
+    # bandpass_peak_spacing = np.mean( 1 / (np.diff(bandpass_rms_peaks) / fs))
+    # vae_peak_spacing      = np.mean( 1 / (np.diff(vae_rms_peaks) / fs))
+    # n2n_peak_spacing      = np.mean( 1 / (np.diff(n2n_rms_peaks) / fs))
 
     respir_rate_all_chs[0, ch] = abs((respiratory_freq - bandpass_peak_spacing) / respiratory_freq) * 100
     respir_rate_all_chs[1, ch] = abs((respiratory_freq - vae_peak_spacing) / respiratory_freq) * 100
     respir_rate_all_chs[2, ch] = abs((respiratory_freq - n2n_peak_spacing) / respiratory_freq) * 100
 
     # CHECKING MSE
-    mse_all_chs[0, ch] = ((bp_envelope_norm.ravel() - bandpass_x_corr) ** 2).mean(axis=0)
-    mse_all_chs[1, ch] = ((bp_envelope_norm.ravel() - vae_x_corr) ** 2).mean(axis=0)
-    mse_all_chs[2, ch] = ((bp_envelope_norm.ravel() - n2n_x_corr) ** 2).mean(axis=0)
+    mse_all_chs[0, ch] = ((resample(bp_envelope_norm, resample_num).ravel() - bandpass_x_corr) ** 2).mean(axis=0)
+    mse_all_chs[1, ch] = ((resample(bp_envelope_norm, resample_num).ravel() - vae_x_corr) ** 2).mean(axis=0)
+    mse_all_chs[2, ch] = ((resample(bp_envelope_norm, resample_num).ravel() - n2n_x_corr) ** 2).mean(axis=0)
+    # mse_all_chs[0, ch] = ((bp_envelope_norm.ravel() - bandpass_x_corr) ** 2).mean(axis=0)
+    # mse_all_chs[1, ch] = ((bp_envelope_norm.ravel() - vae_x_corr) ** 2).mean(axis=0)
+    # mse_all_chs[2, ch] = ((bp_envelope_norm.ravel() - n2n_x_corr) ** 2).mean(axis=0)
 
 
 print(f"Bandpass x-correlation \t MEAN: {np.mean(cross_corr_all_chs[0, :])} \t STD: {np.std(cross_corr_all_chs[0, :])}")
@@ -334,10 +343,12 @@ plt.show()
 
 # Inputs to cross-correlation
 matplotlib.rcParams.update({'font.size': 13})
-time_xcorr = np.linspace(0, time_full[-1], len(bp_envelope_norm))
+time_xcorr = np.linspace(0, time_full[-1], len(resample(bp_envelope_norm, resample_num)))
+# time_xcorr = np.linspace(0, time_full[-1], len(bp_envelope_norm))
 
 plt.figure()
-plt.plot(time_xcorr, bp_envelope_norm, label="BP envelope", alpha=0.75, linestyle='-', linewidth=2)
+plt.plot(time_xcorr, resample(bp_envelope_norm, resample_num), label="BP envelope", alpha=0.75, linestyle='-', linewidth=2)
+# plt.plot(time_xcorr, bp_envelope_norm, label="BP envelope", alpha=0.75, linestyle='-', linewidth=2)
 plt.plot(time_xcorr, np.mean(cross_corr_waveforms[0, :, :], axis=0), label="Bandpass", alpha=1, linestyle='--', linewidth=2)
 plt.plot(time_xcorr, np.mean(cross_corr_waveforms[1, :, :], axis=0), label="VAE", alpha=1, linestyle='-.', linewidth=2)
 plt.plot(time_xcorr, np.mean(cross_corr_waveforms[2, :, :], axis=0), label="Noise2Noise", alpha=1, linestyle=':', linewidth=2)
