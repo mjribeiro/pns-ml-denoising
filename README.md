@@ -1,6 +1,6 @@
 # Denoising and decoding spontaneous vagus nerve recordings with machine learning
 
-This repository contains accompanying code for our IEEE Engineering in Medicine & Biology (EMBC) 2023 [paper](https://ieeexplore.ieee.org/abstract/document/10340443) on denoising and decoding spontaneous vagus nerve recordings with machine learning. More specifically, two ML models (VAE and Noise2Noise) were adapted, implemented, and compared with conventional bandpass filtering. Note that this repository is not actively maintained, and the related dataset is only available upon request. 
+This repository contains accompanying code for our IEEE Engineering in Medicine & Biology (EMBC) 2023 paper (available on [IEEE](https://ieeexplore.ieee.org/abstract/document/10340443) or accepted manuscript can be found on [University of Bath's ResearchPortal](https://researchportal.bath.ac.uk/en/publications/denoising-and-decoding-spontaneous-vagus-nerve-recordings-with-ma)) on denoising and decoding spontaneous vagus nerve recordings with machine learning. More specifically, two ML models (VAE and Noise2Noise) were adapted, implemented, and compared with conventional bandpass filtering. Note that this repository is not actively maintained, and the related dataset is only available upon request. 
 
 ## Short file summaries:
 * ``generate_mov_rms_figure.py``: Generates time-domain and moving RMS plots for draft paper, and prints some of the metrics. Requires models to have been run and inputs/reconstructions to have been saved. 
